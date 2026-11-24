@@ -1,0 +1,27 @@
+apply plugin: 'application'
+
+dependencies {
+    implementation project(':core')
+    implementation "com.badlogicgames.gdx:gdx-backend-lwjgl3:$gdxVersion"
+    implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-desktop"
+}
+
+application {
+    mainClass = 'spacerts.lwjgl3.DesktopLauncher'
+    applicationDefaultJvmArgs = ['--enable-native-access=ALL-UNNAMED']
+}
+
+tasks.named('run') {
+    workingDir = rootProject.projectDir
+}
+
+// Single runnable jar: gradlew dist  ->  lwjgl3/build/libs/NebulaDominion.jar
+tasks.register('dist', Jar) {
+    archiveFileName = 'NebulaDominion.jar'
+    manifest { attributes 'Main-Class': 'spacerts.lwjgl3.DesktopLauncher', 'Enable-Native-Access': 'ALL-UNNAMED' }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from sourceSets.main.output
+    dependsOn configurations.runtimeClasspath
+    from { configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) } }
+    exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA'
+}

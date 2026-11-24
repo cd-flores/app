@@ -1,0 +1,134 @@
+NEBULA DOMINION - RESEARCH TREE
+===============================
+
+How research works
+------------------
+- Build a Research Hub with a Harvester (select it, press 2, click open space; 400 Energy, 400 Metal). Only one is allowed.
+- Select the Hub (press B) and click a tech to research it. One tech at a time.
+- The cost is paid up front. Cancelling refunds it in full.
+- If the Hub is destroyed, the research in progress is lost.
+- "Tier" is the Hub tier a tech needs. The Hub starts at tier 1; raise it with the Hub Expansion techs.
+
+Rare items (extracted by Research Outposts; build a Surveyor at the Hub)
+-----------------------------------------------------------------------
+  Pyro    = Pyrocrystal      from Volcanic planets       (1 every 45s)
+  Cryo    = Cryo Core        from Ice planets            (1 every 45s)
+  Plasma  = Plasma Essence   from Gas giants             (1 every 45s)
+  Void    = Void Shard       from Crystal worlds         (1 every 45s)
+  Relic   = Relic Fragment   from Ancient Ruins          (1 every 90s; guarded, conquer first)
+
+Cost format: Energy / Metal / Rare items     Time in seconds
+
+
+HUB  (upgrade the Hub itself)
+-----------------------------
+Hub Expansion II          Tier 1   600E / 600M / 1 Pyro, 1 Cryo, 1 Plasma, 1 Void   60s
+    -> Research Hub becomes tier 2
+Hub Expansion III         Tier 2   1200E / 1200M / 2 Relic                          90s
+    Requires: Hub Expansion II
+    -> Research Hub becomes tier 3
+
+
+MILITARY
+--------
+Plasma Weapons I          Tier 1   300E / 300M / 2 Pyro                40s
+    -> +15% weapon damage (all ships)
+  Plasma Weapons II       Tier 2   600E / 600M / 5 Pyro, 1 Relic       60s
+      Requires: Plasma Weapons I
+      -> +15% more weapon damage
+
+Reinforced Hulls I        Tier 1   300E / 400M / 2 Cryo                40s
+    -> +15% hull HP (all ships)
+  Reinforced Hulls II     Tier 2   600E / 800M / 5 Cryo, 1 Relic       60s
+      Requires: Reinforced Hulls I
+      -> +15% more hull HP
+
+Last Stand                Tier 1   300E / 250M / 2 Cryo                40s
+    -> Infantry (Lancers and Hive Drones) survive one killing blow with 1 HP.
+       Each ship's Last Stand recharges 30 s after it triggers.
+
+Shield Harmonics          Tier 1   400E / 300M / 3 Cryo                45s
+    -> Shields recharge twice as fast
+
+Ion Engines               Tier 1   300E / 200M / 2 Plasma              40s
+    -> +15% ship speed
+
+Deep Sensors              Tier 1   250E / 150M / 2 Void                35s
+    -> +25% vision; Sensor Ping recharges in 18s instead of 25s
+
+Carrier Doctrine          Tier 1   500E / 500M / none                  50s
+    -> Unlocks HIVE (carrier)
+
+Aegis Project             Tier 2   600E / 600M / 4 Cryo                60s
+    -> Unlocks AEGIS (tank with shield bubble for allies)
+
+Phantom Project           Tier 2   600E / 500M / 4 Plasma, 2 Void      60s
+    -> Unlocks PHANTOM (cloaked sniper)
+
+Leviathan Project         Tier 3   1500E / 1500M / 6 Void, 3 Relic     120s
+    -> Unlocks LEVIATHAN (massive capital ship)
+  Nova Cannon             Tier 3   800E / 600M / 6 Pyro, 1 Relic       70s
+      Requires: Leviathan Project
+      -> Leviathan ability (Q): huge area blast, 1500 damage, 35s cooldown
+  Capital Fleet Command   Tier 3   2000E / 2000M / 5 Relic             120s
+      Requires: Leviathan Project
+      -> Leviathan limit raised from 1 to 3
+
+
+ECONOMY
+-------
+Efficient Collectors I    Tier 1   200E / 150M / none                  30s
+    -> +25% harvest rate
+  Efficient Collectors II Tier 2   500E / 400M / 1 Plasma              45s
+      Requires: Efficient Collectors I
+      -> +25% more harvest rate
+
+Expanded Holds            Tier 1   250E / 250M / none                  30s
+    -> +50% harvester cargo
+
+Deep Core Mining          Tier 1   300E / 300M / 1 Void                40s
+    -> +30% metal mining rate
+
+Survey Drills             Tier 1   300E / 200M / 1 Pyro, 1 Cryo        40s
+    -> Outposts extract rare items 50% faster
+
+
+COLONY
+------
+Arcology Habitats         Tier 1   400E / 400M / 1 Cryo                45s
+    -> +50% housing on all colonies
+
+Planetary Defense Grid    Tier 2   500E / 600M / 2 Pyro                50s
+    -> Every colony gets 2 defense turrets (including future colonies)
+       (stacks with the Turret / Shield Upgrades built by Harvesters: 5 points per colony, +2 turrets or +400 shield each)
+
+
+MOTHERSHIP
+----------
+Mothership Plating        Tier 1   500E / 700M / 2 Cryo                45s
+    -> +40% Mothership HP
+
+Self-Repair Nanites       Tier 1   400E / 400M / 1 Void                45s
+    -> Mothership repairs 12 HP/s; structures repair 4 HP/s
+
+Rapid Assembly            Tier 2   500E / 500M / 2 Plasma              45s
+    -> +30% build speed everywhere
+
+
+SHIPS UNLOCKED BY RESEARCH (built at a Ship Factory)
+-------------------------------------------------------------------------------
+Hive        needs Carrier Doctrine     300E / 350M                          6 housing
+Aegis       needs Aegis Project        250E / 350M / 3 Cryo                 6 housing
+Phantom     needs Phantom Project      250E / 200M / 2 Plasma, 1 Void       4 housing
+Leviathan   needs Leviathan Project    2000E / 2500M / 3 Pyro, 5 Void, 3 Relic   20 housing
+
+
+SUGGESTED PATH TO THE LEVIATHAN
+-------------------------------
+1. Build the Hub, then 2-3 Surveyors on different barren planet types.
+2. Hub Expansion II  (needs 1 of each: Pyro, Cryo, Plasma, Void)
+3. Conquer an Ancient Ruins planet and put an outpost on it for Relics.
+4. Hub Expansion III (2 Relic)
+5. Leviathan Project (6 Void, 3 Relic)
+6. Build the Leviathan (3 Pyro, 5 Void, 3 Relic + 20 housing)
+7. Optional: Nova Cannon, then Capital Fleet Command

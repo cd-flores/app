@@ -1,0 +1,68 @@
+package spacerts.units;
+
+import spacerts.research.RareItem;
+import spacerts.research.Tech;
+
+/** Stat block for a ShipClass, built with a fluent API. */
+public class Spec {
+    public final String name, desc;
+    public int energy, metal, pop;
+    public int[] rare = new int[RareItem.COUNT];
+    public float hp = 100, shield, shieldRegen, armor, speed;
+    public float range, minRange, damage, cooldown = 1f;
+    public float vision = 400, radius = 10, buildTime = 10;
+    public ArmorType type = ArmorType.LIGHT, bonusVs;
+    public float bonusMult = 1f, splash, aura, healRange, healRate;
+    public boolean piercing, mustStop, cloak, stationary, harvester, colonizer, surveyor, producer, internal, detector;
+    public int drones, squad = 1, multi = 1, cap;
+    public Ability ability = Ability.NONE;
+    public Tech tech;
+
+    public Spec(String name, String desc) {
+        this.name = name;
+        this.desc = desc;
+    }
+
+    /** Cost is per build order (whole squad); pop is per individual ship. */
+    public Spec cost(int e, int m, int pop) { energy = e; metal = m; this.pop = pop; return this; }
+    public Spec rare(int pyro, int cryo, int plasma, int voidShard, int relic) { rare = RareItem.cost(pyro, cryo, plasma, voidShard, relic); return this; }
+    public Spec hp(float v) { hp = v; return this; }
+    public Spec shield(float v, float regen) { shield = v; shieldRegen = regen; return this; }
+    public Spec armor(float v) { armor = v; return this; }
+    public Spec speed(float v) { speed = v; return this; }
+    public Spec weapon(float range, float dmg, float cd) { this.range = range; damage = dmg; cooldown = cd; return this; }
+    public Spec minRange(float v) { minRange = v; return this; }
+    public Spec bonus(ArmorType t, float mult) { bonusVs = t; bonusMult = mult; return this; }
+    public Spec splash(float v) { splash = v; return this; }
+    public Spec aura(float v) { aura = v; return this; }
+    public Spec heal(float range, float rate) { healRange = range; healRate = rate; return this; }
+    public Spec piercing() { piercing = true; return this; }
+    public Spec mustStop() { mustStop = true; return this; }
+    public Spec cloak() { cloak = true; return this; }
+    public Spec stationary() { stationary = true; return this; }
+    public Spec harvester() { harvester = true; return this; }
+    public Spec colonizer() { colonizer = true; return this; }
+    public Spec surveyor() { surveyor = true; return this; }
+    public Spec producer() { producer = true; return this; }
+    public Spec internal() { internal = true; return this; }
+    public Spec detector() { detector = true; return this; }
+    public Spec vision(float v) { vision = v; return this; }
+    public Spec radius(float v) { radius = v; return this; }
+    public Spec build(float v) { buildTime = v; return this; }
+    public Spec type(ArmorType t) { type = t; return this; }
+    public Spec drones(int n) { drones = n; return this; }
+    public Spec squad(int n) { squad = n; return this; }
+    public Spec multi(int n) { multi = n; return this; }
+    public Spec cap(int n) { cap = n; return this; }
+    public Spec ability(Ability a) { ability = a; return this; }
+    public Spec tech(Tech t) { tech = t; return this; }
+
+    public boolean hasRare() {
+        for (int r : rare) if (r > 0) return true;
+        return false;
+    }
+
+    public float dps() {
+        return cooldown > 0 ? damage * multi / cooldown : 0;
+    }
+}

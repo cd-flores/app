@@ -1,0 +1,442 @@
+package spacerts.ai;
+
+import spacerts.research.Tech;
+import spacerts.units.Order;
+import spacerts.units.ShipClass;
+import spacerts.units.Unit;
+import spacerts.world.Body;
+import spacerts.world.Faction;
+import spacerts.world.World;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+/** Rival empire brain: economy, expansion, research, army build-up, assaults and defence. */
+public class RivalAI {
+    public enum Mode { BUILDUP, ASSAULT, DEFEND }
+
+    private final World w;
+    private final Faction f;
+    public Mode mode = Mode.BUILDUP;
+    private float think;
+    private float assaultX, assaultY, assaultStartPower;
+    private Body assaultPlanet;
+    private Unit assaultUnit;
+    /** Game time when a (warned) assault actually moves out. */
+    private float launchAt;
+
+    private static final Tech[] RESEARCH_ORDER = {
+            Tech.HARVEST_1, Tech.CARGO, Tech.WEAPONS_1, Tech.ARMOR_1, Tech.LAST_STAND, Tech.HUB_TIER_2, Tech.CARRIER_TECH,
+            Tech.HOUSING, Tech.SHIELDS, Tech.ENGINES, Tech.DEEP_MINING, Tech.SURVEY_DRILLS, Tech.AEGIS_TECH,
+            Tech.PHANTOM_TECH, Tech.WEAPONS_2, Tech.ARMOR_2, Tech.HARVEST_2, Tech.RAPID_ASSEMBLY, Tech.PLANET_TURRETS,
+            Tech.MS_ARMOR, Tech.MS_REPAIR, Tech.HUB_TIER_3, Tech.LEVIATHAN_TECH, Tech.NOVA_CANNON, Tech.SENSORS,
+            Tech.FLEET_COMMAND};
+
+    // lists rebuilt every think
+    private final List<Unit> harvesters = new ArrayList<>(), army = new ArrayList<>(), colonyShips = new ArrayList<>(),
+            surveyors = new ArrayList<>(), colonies = new ArrayList<>(), outposts = new ArrayList<>(), producers = new ArrayList<>();
+
+    public RivalAI(World w, Faction f) {
+        this.w = w;
+        this.f = f;
+        this.think = 1f + f.id * 0.37f;
+    }
+
+    public void update(float dt) {
+        think -= dt;
+        if (think > 0) return;
+        think = 1.5f;
+        Unit ms = f.mothership;
+        if (ms == null || ms.dead) return;
+        scan();
+        economy(ms);
+        expansion(ms);
+        research();
+        military(ms);
+        command(ms);
+    }
+
+    private void scan() {
+        harvesters.clear(); army.clear(); colonyShips.clear(); surveyors.clear(); colonies.clear(); outposts.clear(); producers.clear();
+        for (Unit u : w.units) {
+            if (u.dead || u.owner != f) continue;
+            if (u.s.harvester) harvesters.add(u);
+            else if (u.s.colonizer) colonyShips.add(u);
+            else if (u.s.surveyor) surveyors.add(u);
+            else if (u.cls == ShipClass.COLONY) colonies.add(u);
+            else if (u.cls == ShipClass.OUTPOST) outposts.add(u);
+            else if (u.cls.isWarship()) army.add(u);
+            if (u.cls == ShipClass.FACTORY || u.cls == ShipClass.SHIPYARD) producers.add(u);
+        }
+    }
+
+    private int pending(ShipClass c) {
+        return w.queued(f, c);
+    }
+
+    private Unit leastBusy() {
+        Unit best = null;
+        for (Unit p : producers) if (best == null || p.queue.items.size() < best.queue.items.size()) best = p;
+        return best;
+    }
+
+    private void economy(Unit ms) {
+        int target = Math.min(22, 6 + colonies.size() * 2 + (int) (w.time / 200f));
+        if (harvesters.size() + pending(ShipClass.HARVESTER) < target && ms.queue.items.size() < 3)
+            w.production.enqueue(ms, ShipClass.HARVESTER);
+        for (Unit h : harvesters) if (h.order == Order.IDLE) w.economy.autoAssign(h);
+    }
+
+    private void expansion(Unit ms) {
+        // colony ships
+        Set<Body> claimed = new HashSet<>();
+        for (Unit c : colonyShips) if (c.body != null) claimed.add(c.body);
+        boolean housingTight = f.popCap - f.popUsed < 8;
+        if ((housingTight || w.time > 120) && colonyShips.size() + pending(ShipClass.COLONY_SHIP) == 0 && colonies.size() < 14) {
+            Unit fac = leastBusy();
+            if (fac != null && nearestColonizable(ms, claimed) != null) w.production.enqueue(fac, ShipClass.COLONY_SHIP);
+        }
+        for (Unit c : colonyShips) {
+            if (c.order != Order.COLONIZE) {
+                Body b = nearestColonizable(c, claimed);
+                if (b != null) {
+                    c.command(Order.COLONIZE, b.x, b.y);
+                    c.body = b;
+                    claimed.add(b);
+                }
+            }
+        }
+        construction(ms);
+        // surveyors
+        if (f.hub != null && !f.hub.dead) {
+            Set<Body> claimedS = new HashSet<>();
+            for (Unit s : surveyors) if (s.body != null) claimedS.add(s.body);
+            int want = 2 + f.hubTier() * 2;
+            if (outposts.size() + surveyors.size() + pending(ShipClass.SURVEYOR) < want && f.hub.queue.items.isEmpty()
+                    && nearestSurveyable(f.hub, claimedS) != null)
+                w.production.enqueue(f.hub, ShipClass.SURVEYOR);
+            for (Unit s : surveyors) {
+                if (s.order != Order.SURVEY) {
+                    Body b = nearestSurveyable(s, claimedS);
+                    if (b != null) {
+                        s.command(Order.SURVEY, b.x, b.y);
+                        s.body = b;
+                        claimedS.add(b);
+                    }
+                }
+            }
+        }
+    }
+
+    /** Harvester construction: factories, the research hub, planet defenses and menders. */
+    private void construction(Unit ms) {
+        int factories = 0;
+        for (Unit p : producers) if (p.cls == ShipClass.FACTORY) factories++;
+        factories += w.construction.building(f, ShipClass.FACTORY, null);
+        // first factory right away, more as the empire grows
+        int wantFactories = Math.min(3, 1 + colonies.size() / 3 + (w.time > 900 ? 1 : 0));
+        if (factories == 0 || (factories < wantFactories && w.time > 420 && f.canAfford(600, 600, NO_RARE))) {
+            Unit anchor = factories == 0 || colonies.isEmpty() ? ms : colonies.get(w.rng.nextInt(colonies.size()));
+            build(ShipClass.FACTORY, anchor, null);
+            return;
+        }
+        if (w.time > 200 && (f.hub == null || f.hub.dead) && w.construction.building(f, ShipClass.HUB, null) == 0) {
+            build(ShipClass.HUB, ms, null);
+            return;
+        }
+        if (w.time > 600 && f.canAfford(500, 700, NO_RARE)
+                && w.construction.building(f, ShipClass.DEF_TURRET, null) + w.construction.building(f, ShipClass.DEF_SHIELD, null) == 0) {
+            Unit weakest = null;
+            for (Unit c : colonies)
+                if (c.home != null && c.home.defensePoints() < spacerts.world.Body.MAX_DEFENSE
+                        && (weakest == null || c.home.defensePoints() < weakest.home.defensePoints())) weakest = c;
+            if (weakest != null) {
+                // mix: turrets first, then shield, aiming for 3 turret / 2 shield points
+                Body b = weakest.home;
+                ShipClass kind = b.turretPoints <= b.shieldPoints || b.shieldPoints >= 2 ? ShipClass.DEF_TURRET : ShipClass.DEF_SHIELD;
+                if (b.turretPoints >= 3) kind = ShipClass.DEF_SHIELD;
+                build(kind, weakest, b);
+                return;
+            }
+        }
+        // resource structures: solar collectors at stars and miners at asteroid fields near home
+        if (w.time > 150 && !harvesters.isEmpty() && f.canAfford(450, 450, NO_RARE)
+                && w.construction.building(f, ShipClass.SOLAR, null) + w.construction.building(f, ShipClass.MINER, null) == 0) {
+            int solars = 0, miners = 0;
+            for (Unit u : w.units) {
+                if (u.dead || u.owner != f) continue;
+                if (u.cls == ShipClass.SOLAR) solars++;
+                if (u.cls == ShipClass.MINER) miners++;
+            }
+            int want = Math.min(5, 1 + colonies.size() / 2 + (int) (w.time / 900f));
+            ShipClass kind = solars <= miners ? ShipClass.SOLAR : ShipClass.MINER;
+            if ((kind == ShipClass.SOLAR ? solars : miners) < want) {
+                Body site = extractorSite(ms, kind);
+                if (site != null) {
+                    build(kind, ms, site);
+                    return;
+                }
+            }
+        }
+        if (w.time > 300 && f.canAfford(400, 400, NO_RARE) && w.construction.building(f, ShipClass.MENDER, null) == 0) {
+            int menders = 0;
+            for (Unit u : army) if (u.cls == ShipClass.MENDER) menders++;
+            if (menders < army.size() / 10) build(ShipClass.MENDER, ms, null);
+        }
+    }
+
+    private static final int[] NO_RARE = new int[spacerts.research.RareItem.COUNT];
+
+    /** Closest star (solar) or asteroid / metal planet (miner) to home that a collector or miner can still use. */
+    private Body extractorSite(Unit ms, ShipClass kind) {
+        Unit h = harvesters.get(0);
+        Body best = null;
+        float bd = 4500;
+        for (Body b : w.bodies) {
+            if (b.dead) continue;
+            if (kind == ShipClass.SOLAR ? b.kind != Body.Kind.STAR : !(b.kind == Body.Kind.ASTEROID || (b.isPlanet() && b.type.minable))) continue;
+            float d = ms.dist(b.x, b.y);
+            for (Unit c : colonies) d = Math.min(d, c.dist(b.x, b.y));
+            if (d >= bd) continue;
+            if (w.construction.blocker(h, kind, b, b.x, b.y) != null) continue;
+            bd = d;
+            best = b;
+        }
+        return best;
+    }
+
+    /** Sends the nearest free harvester to build c near the anchor unit. */
+    private void build(ShipClass c, Unit anchor, Body body) {
+        Unit best = null;
+        float bd = Float.MAX_VALUE;
+        for (Unit h : harvesters) {
+            if (h.buildCls != null) continue;
+            float d = h.dist(anchor);
+            if (d < bd) { bd = d; best = h; }
+        }
+        if (best == null) return;
+        float x = anchor.x, y = anchor.y;
+        if (c.needsSite()) {
+            boolean found = false;
+            for (int i = 0; i < 24 && !found; i++) {
+                float a = w.rng.nextFloat() * 6.283f, d = anchor.radius + 160 + w.rng.nextFloat() * 260;
+                x = anchor.x + (float) Math.cos(a) * d;
+                y = anchor.y + (float) Math.sin(a) * d;
+                found = w.construction.siteBlocker(f, x, y, c.s.radius) == null;
+            }
+            if (!found) return;
+        }
+        w.construction.order(best, c, body, x, y);
+    }
+
+    private Body nearestColonizable(Unit from, Set<Body> claimed) {
+        Body best = null;
+        float bd = 7000;
+        for (Body b : w.bodies) {
+            if (!b.colonizable() || claimed.contains(b)) continue;
+            float d = from.dist(b.x, b.y);
+            if (d < bd) { bd = d; best = b; }
+        }
+        return best;
+    }
+
+    private Body nearestSurveyable(Unit from, Set<Body> claimed) {
+        Body best = null;
+        float bd = 6000;
+        for (Body b : w.bodies) {
+            if (!b.canSurvey() || claimed.contains(b)) continue;
+            float d = from.dist(b.x, b.y);
+            if (d < bd) { bd = d; best = b; }
+        }
+        return best;
+    }
+
+    private void research() {
+        if (f.researching != null || f.hub == null || f.hub.dead) return;
+        for (Tech t : RESEARCH_ORDER) {
+            if (w.production.researchBlocker(f, t) != null) continue;
+            if (f.canAfford(t.energy + 150, t.metal + 100, t.rare)) {
+                w.production.startResearch(f, t);
+                return;
+            }
+        }
+    }
+
+    private float armyPower() {
+        float p = 0;
+        for (Unit u : army) p += u.power();
+        return p;
+    }
+
+    private void military(Unit ms) {
+        if (f.energy < 250 && f.metal < 250) return;
+        // keep housing free for a colony ship while there are worlds left to settle, or expansion stalls
+        if (f.popCap - f.popUsed <= 4 && colonyShips.isEmpty() && colonies.size() < 14
+                && nearestColonizable(ms, new HashSet<>()) != null) return;
+        Unit p = leastBusy();
+        if (p == null || p.queue.items.size() >= 3) return;
+        // capital ship first when available
+        if (f.has(Tech.LEVIATHAN_TECH) && w.production.enqueue(p, ShipClass.LEVIATHAN) == null) return;
+        int wisps = 0;
+        for (Unit u : army) if (u.cls == ShipClass.WISP) wisps++;
+        if (wisps < 2) { w.production.enqueue(p, ShipClass.WISP); return; }
+        ShipClass[] pool = {ShipClass.LANCER, ShipClass.LANCER, ShipClass.LANCER, ShipClass.BULWARK, ShipClass.BULWARK,
+                ShipClass.LONGBOW, ShipClass.LONGBOW, ShipClass.HIVE, ShipClass.AEGIS, ShipClass.PHANTOM};
+        for (int tries = 0; tries < 4; tries++) {
+            ShipClass c = pool[w.rng.nextInt(pool.length)];
+            if (w.production.enqueue(p, c) == null) return;
+        }
+    }
+
+    private void command(Unit ms) {
+        float power = armyPower();
+        float threshold = (20 + w.time / 60f * 1.6f) * w.difficulty.assaultThreshold;
+        float rallyA = (float) Math.atan2(World.SIZE / 2 - ms.y, World.SIZE / 2 - ms.x);
+        float rx = ms.x + (float) Math.cos(rallyA) * 350, ry = ms.y + (float) Math.sin(rallyA) * 350;
+
+        // defence takes priority when something of ours near home is hit
+        boolean homeThreat = w.time - f.lastAttackedTime < 6 && Math.hypot(f.lastAttackX - ms.x, f.lastAttackY - ms.y) < 3500;
+        if (homeThreat && mode != Mode.DEFEND && (mode != Mode.ASSAULT || power < 10)) {
+            mode = Mode.DEFEND;
+            for (Unit u : army) u.command(Order.ATTACK_MOVE, f.lastAttackX, f.lastAttackY);
+            return;
+        }
+        switch (mode) {
+            case DEFEND:
+                if (w.time - f.lastAttackedTime > 15) {
+                    mode = Mode.BUILDUP;
+                    for (Unit u : army) u.command(Order.MOVE, rx, ry);
+                } else {
+                    for (Unit u : army) if (u.order == Order.IDLE) u.command(Order.ATTACK_MOVE, f.lastAttackX, f.lastAttackY);
+                }
+                break;
+            case BUILDUP:
+                for (Unit u : army)
+                    if (u.order == Order.IDLE && u.target == null && u.dist(rx, ry) > 600) u.command(Order.MOVE, rx + w.rng.nextFloat() * 200 - 100, ry + w.rng.nextFloat() * 200 - 100);
+                if (power >= threshold && army.size() >= 6) {
+                    if (pickAssault(ms)) {
+                        mode = Mode.ASSAULT;
+                        assaultStartPower = power;
+                        launchAt = w.time + warn(army.size());
+                        if (launchAt <= w.time) attackMove();
+                    }
+                }
+                break;
+            case ASSAULT:
+                if (power < assaultStartPower * 0.35f) {
+                    mode = Mode.BUILDUP;
+                    for (Unit u : army) u.command(Order.MOVE, rx, ry);
+                    break;
+                }
+                if (w.time < launchAt) { // warned the player; gathering at the rally point before moving out
+                    for (Unit u : army)
+                        if (u.order == Order.IDLE && u.target == null && u.dist(rx, ry) > 500) u.command(Order.MOVE, rx, ry);
+                    break;
+                }
+                boolean done = assaultPlanet != null ? !assaultPlanet.guarded() : (assaultUnit == null || assaultUnit.dead);
+                if (done) {
+                    if (!pickAssault(ms)) {
+                        mode = Mode.BUILDUP;
+                        for (Unit u : army) u.command(Order.MOVE, rx, ry);
+                        break;
+                    }
+                    float delay = warn(army.size());
+                    if (delay > 0) {
+                        launchAt = w.time + delay;
+                        break;
+                    }
+                }
+                attackMove();
+                break;
+        }
+    }
+
+    /**
+     * Sends the army at the assault target as one group: stragglers far from the main body regroup on it first
+     * instead of trickling into the enemy one by one.
+     */
+    private void attackMove() {
+        if (army.isEmpty()) return;
+        float cx = 0, cy = 0;
+        for (Unit u : army) { cx += u.x; cy += u.y; }
+        cx /= army.size();
+        cy /= army.size();
+        // the leader is the ship closest to the army's centre
+        Unit lead = army.get(0);
+        for (Unit u : army) if (u.dist(cx, cy) < lead.dist(cx, cy)) lead = u;
+        int together = 0;
+        for (Unit u : army) if (u.dist(lead) < 900) together++;
+        boolean grouped = together >= army.size() * 0.7f || lead.dist(assaultX, assaultY) < 1800;
+        for (Unit u : army) {
+            if (u.target != null) continue; // already fighting
+            if (grouped) {
+                boolean onTarget = u.order == Order.ATTACK_MOVE && Math.hypot(u.tx - assaultX, u.ty - assaultY) < 400;
+                if (!onTarget) u.command(Order.ATTACK_MOVE, assaultX + w.rng.nextFloat() * 160 - 80, assaultY + w.rng.nextFloat() * 160 - 80);
+            } else if (u.dist(lead) > 600) {
+                if (u.order != Order.MOVE || Math.hypot(u.tx - lead.x, u.ty - lead.y) > 400) u.command(Order.MOVE, lead.x, lead.y);
+            } else if (u.order == Order.ATTACK_MOVE) {
+                u.idle(); // hold with the leader until the stragglers catch up
+            }
+        }
+    }
+
+    /** Warns the player when the chosen target is theirs; returns how long to wait before moving out. */
+    private float warn(int ships) {
+        if (assaultUnit == null || !assaultUnit.owner.isPlayer()) return 0;
+        Unit t = assaultUnit;
+        String where = t.home != null ? t.home.name : t.s.name;
+        w.notify(w.player, f.name + " fleet (" + ships + " ships) is preparing to attack your " + where + "!", World.ALERT);
+        w.alert(t.x, t.y);
+        return w.difficulty.warningDelay;
+    }
+
+    /** Picks the next assault target: a guarded planet nearby, or the closest enemy structure. */
+    private boolean pickAssault(Unit ms) {
+        assaultPlanet = null;
+        assaultUnit = null;
+        Body bestPlanet = null;
+        float bp = 5500;
+        for (Body b : w.bodies) {
+            if (b.dead || !b.guarded()) continue;
+            if (b.type == spacerts.world.PlanetType.RUINS && w.time < 900) continue;
+            float d = ms.dist(b.x, b.y);
+            if (d < bp) { bp = d; bestPlanet = b; }
+        }
+        // nearest structure of the player and of other rivals, then pick one by the difficulty's player share
+        Unit nearPlayer = null, nearRival = null;
+        float dp = Float.MAX_VALUE, dr = Float.MAX_VALUE;
+        for (Unit u : w.units) {
+            if (u.dead || u.owner == f || !u.owner.isMajor()) continue;
+            if (!(u.cls.isBuilding() || u.cls == ShipClass.MOTHERSHIP)) continue;
+            float d = ms.dist(u);
+            if (u.owner.isPlayer()) {
+                // Easy: hit the player's colonies and outposts first; their Mothership only when nothing else is left
+                if (u.cls == ShipClass.MOTHERSHIP && w.difficulty == spacerts.world.Difficulty.EASY) d += 100000;
+                if (d < dp) { dp = d; nearPlayer = u; }
+            } else if (d < dr) { dr = d; nearRival = u; }
+        }
+        Unit bestEnemy;
+        if (nearPlayer != null && nearRival != null)
+            bestEnemy = w.rng.nextFloat() < w.difficulty.playerShare ? nearPlayer : nearRival;
+        else bestEnemy = nearPlayer != null ? nearPlayer : nearRival;
+        // early game: only fight natives for planets; empires are fair game after the difficulty's first strike time
+        float first = w.difficulty.firstStrike;
+        if (w.time < first) bestEnemy = null;
+        boolean preferPlanet = bestPlanet != null && (bestEnemy == null || w.time < first + 600 || w.rng.nextFloat() < 0.4f);
+        if (preferPlanet) {
+            assaultPlanet = bestPlanet;
+            assaultX = bestPlanet.x;
+            assaultY = bestPlanet.y;
+            return true;
+        }
+        if (bestEnemy != null) {
+            assaultUnit = bestEnemy;
+            assaultX = bestEnemy.x;
+            assaultY = bestEnemy.y;
+            return true;
+        }
+        return false;
+    }
+}
