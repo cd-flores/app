@@ -13,6 +13,14 @@ public class Spec {
     public float vision = 400, radius = 10, buildTime = 10;
     public ArmorType type = ArmorType.LIGHT, bonusVs;
     public float bonusMult = 1f, splash, aura, healRange, healRate;
+    /** Harvesters: cargo hold size and gathering speed multiplier. */
+    public float cargo = 30, mineMult = 1f;
+    /** Tier upgrades queued at a Mothership / Factory: the tier it raises the producer to (0 = not an upgrade). */
+    public int upgradeTo;
+    /** Ship Factory tier needed to build this ship; Mothership tier needed to construct this structure. */
+    public int factoryTier = 1, msTier = 1;
+    /** Only exists in the pirates-only Hive galaxy (Claim Beacon, Ascension Gate). */
+    public boolean hiveOnly;
     public boolean piercing, mustStop, cloak, stationary, harvester, colonizer, surveyor, producer, internal, detector;
     public int drones, squad = 1, multi = 1, cap;
     public Ability ability = Ability.NONE;
@@ -26,6 +34,15 @@ public class Spec {
     /** Cost is per build order (whole squad); pop is per individual ship. */
     public Spec cost(int e, int m, int pop) { energy = e; metal = m; this.pop = pop; return this; }
     public Spec rare(int pyro, int cryo, int plasma, int voidShard, int relic) { rare = RareItem.cost(pyro, cryo, plasma, voidShard, relic); return this; }
+    /** Scarce-find costs (Dark Matter, Star Essence, Neutronium, Exotic Matter), added to any rare() cost. */
+    public Spec rare2(int dark, int star, int neutron, int exotic) {
+        rare = rare.clone();
+        rare[5] = dark;
+        rare[6] = star;
+        rare[7] = neutron;
+        rare[8] = exotic;
+        return this;
+    }
     public Spec hp(float v) { hp = v; return this; }
     public Spec shield(float v, float regen) { shield = v; shieldRegen = regen; return this; }
     public Spec armor(float v) { armor = v; return this; }
@@ -41,6 +58,12 @@ public class Spec {
     public Spec cloak() { cloak = true; return this; }
     public Spec stationary() { stationary = true; return this; }
     public Spec harvester() { harvester = true; return this; }
+    public Spec cargo(float v) { cargo = v; return this; }
+    public Spec upgrade(int toTier) { upgradeTo = toTier; internal = true; return this; }
+    public Spec factoryTier(int t) { factoryTier = t; return this; }
+    public Spec msTier(int t) { msTier = t; return this; }
+    public Spec hiveOnly() { hiveOnly = true; return this; }
+    public Spec mine(float v) { mineMult = v; return this; }
     public Spec colonizer() { colonizer = true; return this; }
     public Spec surveyor() { surveyor = true; return this; }
     public Spec producer() { producer = true; return this; }

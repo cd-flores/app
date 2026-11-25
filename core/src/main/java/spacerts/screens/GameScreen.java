@@ -21,8 +21,12 @@ public class GameScreen extends ScreenAdapter {
     public final WorldRenderer renderer;
     public final Hud hud;
     public boolean paused, showHelp = true, menuOpen;
+    /** Hive galaxy map overlay (Tab). */
+    public boolean showGalaxy;
     public int speed = 1;
     private static final float STEP = 1f / 30f;
+    private static final float AUTOSAVE_EVERY = 300f;
+    private float nextAutosave = -1;
 
     public GameScreen(SpaceRtsGame game, World world) {
         this.game = game;
@@ -34,6 +38,7 @@ public class GameScreen extends ScreenAdapter {
         renderer = new WorldRenderer(this);
         hud = new Hud(this);
         centerOnMothership();
+        nextAutosave = world.time + AUTOSAVE_EVERY;
     }
 
     public void centerOnMothership() {
@@ -58,6 +63,16 @@ public class GameScreen extends ScreenAdapter {
             int steps = Math.max(1, (int) Math.ceil(dt / STEP));
             float h = dt / steps;
             for (int i = 0; i < steps; i++) world.update(h);
+            // long campaigns: autosave every 5 minutes of game time
+            if (world.time >= nextAutosave && !world.gameOver) {
+                nextAutosave = world.time + AUTOSAVE_EVERY;
+                try {
+                    SaveManager.autosave(world);
+                    world.notify(world.player, "Autosaved.", World.INFO);
+                } catch (Exception e) {
+                    world.notify(world.player, "Autosave failed: " + e.getMessage(), World.ALERT);
+                }
+            }
         }
         input.cleanSelection();
         cam.update();

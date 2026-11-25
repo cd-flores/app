@@ -26,9 +26,9 @@ public class ProductionSystem {
             Unit p = w.units.get(i);
             if (p.dead || p.queue == null || p.queue.isEmpty()) continue;
             ShipClass c = p.queue.items.get(0);
-            p.queue.progress += dt * p.owner.buildMult() / c.s.buildTime;
+            p.queue.progress += dt * p.owner.buildMult() * tierSpeed(p) / c.s.buildTime;
             if (p.queue.progress >= 1f) {
-                p.queue.items.remove(0);
+                p.queue.removeAt(0);
                 p.queue.progress = 0;
                 deliver(p, c);
             }
@@ -36,13 +36,39 @@ public class ProductionSystem {
         for (Faction f : w.factions) {
             if (f.researching == null || f.eliminated) continue;
             if (f.hub == null || f.hub.dead) continue;
-            f.researchProgress += dt / f.researching.time;
+            f.researchProgress += dt * researchSpeed(f) / f.researching.time;
             if (f.researchProgress >= 1f) complete(f, f.researching);
         }
     }
 
+    /** Ship Factory upgrades: each tier above I builds 30% faster at that factory. */
+    public static float tierSpeed(Unit p) {
+        return p.cls == ShipClass.FACTORY ? 1f + 0.3f * (p.tier - 1) : 1f;
+    }
+
+    /** Each Research Hub (lab) tier above I researches 25% faster. */
+    public static float researchSpeed(Faction f) {
+        return 1f + 0.25f * Math.max(0, f.hubTier() - 1);
+    }
+
     private void deliver(Unit p, ShipClass c) {
         Faction f = p.owner;
+        if (c == ShipClass.STELLAR_REFINEMENT) { // endgame stacking upgrade
+            f.refinement = Math.min(Faction.REFINEMENT_MAX, f.refinement + 1);
+            w.ring(p.x, p.y, p.radius * 2.5f, new com.badlogic.gdx.graphics.Color(1f, 0.9f, 0.5f, 1f), 0.8f);
+            w.notify(f, "Stellar Refinement level " + f.refinement + "/" + Faction.REFINEMENT_MAX + ": mining and energy +"
+                    + Math.round(Faction.REFINEMENT_STEP * 100 * f.refinement) + "%.", World.GOOD);
+            return;
+        }
+        if (c.isUpgrade()) { // tier upgrades raise the producer instead of spawning anything
+            float hpFrac = p.hp / p.maxHp(), shFrac = p.maxShield() > 0 ? p.shield / p.maxShield() : 0;
+            p.tier = Math.max(p.tier, c.s.upgradeTo);
+            p.hp = p.maxHp() * hpFrac;
+            p.shield = p.maxShield() * shFrac;
+            w.ring(p.x, p.y, p.radius * 3f, f.color, 1.2f);
+            w.notify(f, p.s.name + " upgraded to tier " + roman(p.tier) + "!", World.GOOD);
+            return;
+        }
         if (c == ShipClass.SHIPYARD) { // legacy queues from older saves
             Body planet = p.home;
             if (planet == null) return;
@@ -84,6 +110,20 @@ public class ProductionSystem {
         for (ShipClass b : p.cls.buildList()) if (b == c) listed = true;
         if (!listed) return p.s.name + " can't build " + c.s.name;
         if (c.s.tech != null && !f.has(c.s.tech)) return "Requires research: " + c.s.tech.title;
+        if (c.isUpgrade()) {
+            if (p.tier >= c.s.upgradeTo) return "Already tier " + roman(p.tier);
+            if (p.tier < c.s.upgradeTo - 1) return "Upgrade to tier " + roman(c.s.upgradeTo - 1) + " first";
+            for (ShipClass q : p.queue.items) if (q.isUpgrade()) return "Upgrade already in progress";
+        }
+        if (p.cls == ShipClass.FACTORY && c.s.factoryTier > p.tier) return "Requires a tier " + roman(c.s.factoryTier) + " Ship Factory";
+        if (p.cls == ShipClass.MOTHERSHIP && !c.isUpgrade() && c.s.msTier > p.tier)
+            return "Requires Mothership tier " + roman(c.s.msTier);
+        if (c == ShipClass.STELLAR_REFINEMENT) {
+            if (p.tier < 3) return "Requires Mothership tier III";
+            if (f.hubTier() < 3) return "Requires a tier III Research Hub (Hub Expansion III)";
+            if (w.queued(f, c) > 0) return "Stellar Refinement already in progress";
+            if (f.refinement >= Faction.REFINEMENT_MAX) return "Stellar Refinement maxed (" + Faction.REFINEMENT_MAX + ")";
+        }
         if (c == ShipClass.HUB && ((f.hub != null && !f.hub.dead) || w.queued(f, ShipClass.HUB) > 0)) return "Only one Research Hub allowed";
         if (c == ShipClass.SHIPYARD) {
             if (p.home == null) return "Must be built at a colony";
@@ -99,24 +139,63 @@ public class ProductionSystem {
         return null;
     }
 
+    public static String roman(int t) {
+        return t <= 1 ? "I" : t == 2 ? "II" : "III";
+    }
+
     public String enqueue(Unit p, ShipClass c) {
         if (p == null || p.dead || p.queue == null) return "No producer";
         String why = blocker(p, c);
         if (why != null) return why;
         Faction f = p.owner;
-        String miss = f.missing(c.s.energy, c.s.metal, c.s.rare);
+        int e = energyCost(f, c), m = metalCost(f, c);
+        String miss = f.missing(e, m, c.s.rare);
         if (miss != null) return miss;
-        f.pay(c.s.energy, c.s.metal, c.s.rare);
-        p.queue.items.add(c);
+        f.pay(e, m, c.s.rare);
+        p.queue.add(c, e, m);
         f.popUsed += c.s.pop * c.s.squad;
         return null;
     }
 
     public void cancel(Unit p, int index) {
         if (p == null || p.queue == null || index < 0 || index >= p.queue.items.size()) return;
-        ShipClass c = p.queue.items.remove(index);
-        p.owner.refund(c.s.energy, c.s.metal, c.s.rare);
+        ShipClass c = p.queue.items.get(index);
+        int[] paid = p.queue.removeAt(index); // refund what was paid, not today's price
+        p.owner.refund(paid[0], paid[1], c.s.rare);
         if (index == 0) p.queue.progress = 0;
+    }
+
+    // ------------------------------------------------------------------ logarithmic warship pricing
+
+    /** Price growth: price = base x (1 + PRICE_K x ln(1 + copies)). */
+    public static final float PRICE_K = 0.35f;
+
+    /** Build orders of c the faction already has: alive (counted per squad) plus queued. */
+    public int copies(Faction f, ShipClass c) {
+        return w.count(f, c) / Math.max(1, c.s.squad) + w.queued(f, c);
+    }
+
+    /** Stellar Refinement price growth: base x (1 + REFINEMENT_K x ln(1 + level)). */
+    public static final float REFINEMENT_K = 1.0f;
+
+    /** Warships get pricier the more copies of that type you have; Stellar Refinement with its level; the rest stays at base. */
+    public float priceMult(Faction f, ShipClass c) {
+        if (c == ShipClass.STELLAR_REFINEMENT) return 1f + REFINEMENT_K * (float) Math.log(1 + f.refinement + w.queued(f, c));
+        if (!c.isWarship()) return 1f;
+        return 1f + PRICE_K * (float) Math.log(1 + copies(f, c));
+    }
+
+    public int energyCost(Faction f, ShipClass c) {
+        return scaled(c.s.energy, priceMult(f, c));
+    }
+
+    public int metalCost(Faction f, ShipClass c) {
+        return scaled(c.s.metal, priceMult(f, c));
+    }
+
+    private static int scaled(int base, float mult) {
+        if (base <= 0 || mult <= 1f) return base;
+        return Math.round(base * mult / 5f) * 5; // tidy numbers
     }
 
     // ------------------------------------------------------------------ research

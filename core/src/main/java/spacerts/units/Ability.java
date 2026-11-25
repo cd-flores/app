@@ -4,7 +4,8 @@ public enum Ability {
     NONE("-"),
     PING("Sensor Ping"),
     TAUNT("Taunt"),
-    NOVA("Nova Cannon");
+    NOVA("Nova Cannon"),
+    OVERCHARGE("Overcharge");
 
     public final String title;
 

@@ -132,3 +132,45 @@ SUGGESTED PATH TO THE LEVIATHAN
 5. Leviathan Project (6 Void, 3 Relic)
 6. Build the Leviathan (3 Pyro, 5 Void, 3 Relic + 20 housing)
 7. Optional: Nova Cannon, then Capital Fleet Command
+
+
+SCARCE FINDS AND LATE TECHS
+---------------------------
+Scarce finds turn up at low odds (they appear in the top bar once you have found one):
+  Dark     = Dark Matter      harvesters unloading asteroid metal (2%/load), Asteroid Miners (4%/min)
+  Star     = Star Essence     Solar Collectors (4%/min), harvesters unloading starlight (1%/load)
+  Neut     = Neutronium       salvaging a wreck to the end (8%); pirate stronghold wrecks always hold 2
+  Exotic   = Exotic Matter    Ruins outposts (12% per relic), destroyed pirate Dreadnoughts (25%)
+
+Neutronium Plating        Tier 3   1500E / 2000M / 4 Neut              100s
+    Requires: Reinforced Hulls II
+    -> +20% more hull HP (all ships)
+Hyperdrive Lattice        Tier 3   1200E / 1000M / 2 Dark, 2 Star, 1 Exotic   90s
+    Requires: Ion Engines
+    -> +10% ship speed; jump gates recharge instantly
+Dark Matter Reactors      Tier 3   1500E / 1500M / 4 Dark              100s
+    Requires: Rapid Assembly
+    -> Another +30% build speed everywhere
+
+Lab upgrades: each Research Hub tier (Hub Expansion II / III) also researches 25% faster.
+
+
+DEFENSE AND LOGISTICS (added later)
+-----------------------------------
+Splinter Hulls            Tier 1   300E / 250M / 1 Plasma              40s
+    -> Patrol Ships split into 3 Patrol Skiffs instead of 2 when destroyed
+Emergency Thrusters       Tier 1   300E / 300M / 2 Plasma              40s
+    -> Auto-retreating ships move 60% faster
+Salvage Drones            Tier 1   300E / 200M / none                  40s
+    -> Wrecks are salvaged 50% faster and give +25% metal
+Sniper Deflectors         Tier 1   400E / 400M / 2 Cryo                45s
+    -> Your colonies and their planet turrets take 35% less damage from snipers
+Jump Inhibitors           Tier 2   600E / 500M / 3 Void                60s
+    -> Enemy ships coming out of a jump gate into a hex you own are slowed 50% for 8 s (Hive)
+Counter-Battery Turrets   Tier 2   600E / 700M / 2 Pyro, 1 Void        60s
+    -> Planet turrets and Defense Platforms reach snipers out to 1100 - but only while the
+       sniper is visible, i.e. after it has given itself away by firing
+Martyr Shockwave          Tier 2   700E / 600M / 1 Pyro, 1 Cryo, 1 Plasma, 1 Void   60s
+    -> When one of your colonies is destroyed, every enemy ship within 1200 is stunned for 8 s
+Rapid Refit Docks         Tier 2   600E / 600M / 1 Cryo, 1 Plasma      50s
+    -> Base repair 2% -> 4% hull per second, starting 3 s after combat (was 6 s)

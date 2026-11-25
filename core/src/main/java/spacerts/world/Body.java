@@ -8,12 +8,35 @@ import java.util.List;
 
 /** A star, asteroid or planet. */
 public class Body {
-    public enum Kind { STAR, ASTEROID, PLANET }
+    /** WRECK: debris left by a destroyed ship; holds salvageable metal and drifts away after `life` seconds. */
+    public enum Kind { STAR, ASTEROID, PLANET, WRECK, GATE }
+
+    /** The system this body sits in (set by Galaxy.indexBodies). */
+    public StarSystem system;
+    /** Jump gates: the paired gate in the neighbouring system, and which side of this system the gate is on. */
+    public Body link;
+    public int side = -1;
+
+    public boolean isGate() { return kind == Kind.GATE; }
+
+    public static final float WRECK_LIFE = 300f;
+    /** Seconds left before a wreck drifts away (wrecks only). */
+    public float life;
+    /** Scarce loot in a wreck, given to whoever salvages its last metal. */
+    public int lootNeutron, lootExotic;
+
+    public boolean isWreck() { return kind == Kind.WRECK; }
+
+    /** Asteroid or wreck: a body with a finite metal store that disappears when emptied. */
+    public boolean depletes() { return kind == Kind.ASTEROID || kind == Kind.WRECK; }
 
     public final Kind kind;
     public PlanetType type;
     public float x, y, radius;
-    public float metal, maxMetal;
+    /** Doubles so giant asteroids holding millions still register a miner's tiny per-tick bites. */
+    public double metal, maxMetal;
+    /** A giant asteroid holding millions of metal. */
+    public boolean giant;
     public String name = "";
     public final Color color = new Color(1, 1, 1, 1);
     public float guardRadius;
@@ -66,7 +89,7 @@ public class Body {
     }
 
     public boolean harvestable() {
-        return !dead && (kind == Kind.STAR || kind == Kind.ASTEROID || (kind == Kind.PLANET && type.minable));
+        return !dead && (kind == Kind.STAR || kind == Kind.ASTEROID || kind == Kind.WRECK || (kind == Kind.PLANET && type.minable));
     }
 
     /** Base resource per second while a harvester is gathering. */
@@ -74,6 +97,7 @@ public class Body {
         switch (kind) {
             case STAR: return 8f;
             case ASTEROID: return 7f;
+            case WRECK: return 10f;
             default: return 4.2f;
         }
     }
@@ -87,7 +111,9 @@ public class Body {
     public String title() {
         switch (kind) {
             case STAR: return name + " (Star)";
-            case ASTEROID: return "Asteroid";
+            case ASTEROID: return giant ? (name.isEmpty() ? "Giant Asteroid" : name) : "Asteroid";
+            case WRECK: return "Wreck (" + (int) metal + " metal)";
+            case GATE: return name;
             default: return name + " - " + type.title;
         }
     }

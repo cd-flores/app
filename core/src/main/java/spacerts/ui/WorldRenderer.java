@@ -18,6 +18,7 @@ import spacerts.world.Body;
 import spacerts.world.Effect;
 import spacerts.world.Ping;
 import spacerts.world.PlanetType;
+import spacerts.world.StarSystem;
 import spacerts.world.VisionGrid;
 import spacerts.world.World;
 
@@ -52,6 +53,9 @@ public class WorldRenderer {
         }
     }
 
+    /** The Hive's spinning galaxy background (created on first use). */
+    private GalaxyBackdrop backdrop;
+
     public void render() {
         World w = gs.world;
         OrthographicCamera cam = gs.cam;
@@ -69,6 +73,11 @@ public class WorldRenderer {
         // parallax background in screen space
         float W = Gdx.graphics.getWidth(), H = Gdx.graphics.getHeight();
         sr.setProjectionMatrix(gs.hudCam.combined);
+        if (w.galaxy.hive) {
+            if (backdrop == null) backdrop = new GalaxyBackdrop(w.seed);
+            backdrop.draw(sr, W, H, cam.position.x, cam.position.y, w.galaxy.width, w.galaxy.height, zoom, Gdx.graphics.getDeltaTime());
+            if (gs.showGalaxy) return; // the galaxy map is drawn by the HUD over the backdrop alone
+        }
         sr.begin(ShapeRenderer.ShapeType.Filled);
         for (int i = 0; i < bgX.length; i++) {
             float depth = 0.02f + bgS[i] * 0.06f;
@@ -82,13 +91,22 @@ public class WorldRenderer {
 
         sr.setProjectionMatrix(cam.combined);
         sr.begin(ShapeRenderer.ShapeType.Filled);
-        // map border
+        // map borders: the classic square, or every hex outline in view
         float lw = 3 * zoom;
-        sr.setColor(0.15f, 0.25f, 0.45f, 0.6f);
-        sr.rect(-lw, -lw, World.SIZE + 2 * lw, lw);
-        sr.rect(-lw, World.SIZE, World.SIZE + 2 * lw, lw);
-        sr.rect(-lw, 0, lw, World.SIZE);
-        sr.rect(World.SIZE, 0, lw, World.SIZE);
+        for (StarSystem s : w.galaxy.systems) {
+            if (s.maxX() < vx0 || s.minX() > vx1 || s.maxY() < vy0 || s.minY() > vy1) continue;
+            boolean here = s == w.systemAt(cam.position.x, cam.position.y);
+            sr.setColor(0.15f, 0.25f, 0.45f, here ? 0.6f : 0.3f);
+            if (!s.hex) {
+                float x0 = s.minX(), y0 = s.minY(), x1 = s.maxX(), y1 = s.maxY();
+                sr.rect(x0 - lw, y0 - lw, x1 - x0 + 2 * lw, lw);
+                sr.rect(x0 - lw, y1, x1 - x0 + 2 * lw, lw);
+                sr.rect(x0 - lw, y0, lw, y1 - y0);
+                sr.rect(x1, y0, lw, y1 - y0);
+            } else {
+                for (int k = 0; k < 6; k++) sr.rectLine(s.cornerX(k), s.cornerY(k), s.cornerX(k + 1), s.cornerY(k + 1), lw);
+            }
+        }
 
         VisionGrid vg = w.player.vision;
         for (Body b : w.bodies) {
@@ -161,6 +179,13 @@ public class WorldRenderer {
                 sr.circle(cp[0], cp[1], in.placing.s.radius, segs(in.placing.s.radius));
                 sr.setColor(pc.r, pc.g, pc.b, 0.8f);
                 ring(sr, cp[0], cp[1], in.placing.s.radius, 1.5f * zoom, 32);
+                // preview what it covers: repair radius, weapon range or vision
+                float reach = in.placing.s.healRange > 0 ? in.placing.s.healRange : in.placing.s.range > 0 ? in.placing.s.range
+                        : in.placing == ShipClass.SENSOR || in.placing == ShipClass.BEACON ? in.placing.s.vision : 0;
+                if (reach > 0) {
+                    sr.setColor(in.placing.s.healRange > 0 ? 0.4f : pc.r, in.placing.s.healRange > 0 ? 1f : pc.g, in.placing.s.healRange > 0 ? 0.5f : pc.b, 0.35f);
+                    ring(sr, cp[0], cp[1], reach, 1.2f * zoom, 64);
+                }
             } else if (in.placing.isExtractor()) {
                 // highlight the star / asteroid under the cursor: green if it can take one, red if not
                 Body b = w.bodyAt(cp[0], cp[1], 30 * zoom);
@@ -361,13 +386,67 @@ public class WorldRenderer {
                 break;
             }
             case ASTEROID: {
-                float r = b.radius * (0.45f + 0.55f * (b.maxMetal > 0 ? b.metal / b.maxMetal : 1));
+                float r = b.radius * (0.45f + 0.55f * (b.maxMetal > 0 ? (float) (b.metal / b.maxMetal) : 1));
                 sr.setColor(c.r * 0.7f, c.g * 0.7f, c.b * 0.7f, 1f);
                 sr.circle(b.x, b.y, r, 9);
                 sr.setColor(c);
                 sr.circle(b.x - r * 0.15f, b.y + r * 0.15f, r * 0.8f, 9);
                 sr.setColor(c.r * 0.6f, c.g * 0.6f, c.b * 0.6f, 1f);
                 sr.circle(b.x + r * 0.25f, b.y - r * 0.1f, r * 0.25f, 6);
+                if (b.giant) { // craters and glinting ore veins on the giants
+                    for (int i = 0; i < 5; i++) {
+                        double a = i * 1.3 + b.x * 0.01;
+                        float cx = b.x + (float) Math.cos(a) * r * 0.5f, cy = b.y + (float) Math.sin(a) * r * 0.5f;
+                        sr.setColor(c.r * 0.5f, c.g * 0.5f, c.b * 0.5f, 1f);
+                        sr.circle(cx, cy, r * (0.1f + 0.04f * i), 10);
+                    }
+                    float glint = 0.45f + 0.35f * (float) Math.sin(w.time * 1.5f + b.y);
+                    sr.setColor(1f, 0.8f, 0.35f, glint);
+                    for (int i = 0; i < 3; i++) {
+                        double a = i * 2.1 + 0.4;
+                        sr.rectLine(b.x, b.y, b.x + (float) Math.cos(a) * r * 0.7f, b.y + (float) Math.sin(a) * r * 0.7f, Math.max(2f, r * 0.05f));
+                    }
+                }
+                break;
+            }
+            case GATE: { // jump gate: a spinning double ring with an arrow toward the system it leads to
+                float r = b.radius, pulse = 0.5f + 0.5f * (float) Math.sin(w.time * 2.5f + b.x * 0.01f);
+                sr.setColor(c.r, c.g, c.b, 0.06f + 0.05f * pulse);
+                sr.circle(b.x, b.y, r * 2.4f, segs(r * 2.4f));
+                sr.setColor(0.05f, 0.12f, 0.2f, 0.9f);
+                sr.circle(b.x, b.y, r * 0.8f, segs(r));
+                sr.setColor(c.r, c.g, c.b, 0.85f);
+                ring(sr, b.x, b.y, r, 5f, 36);
+                sr.setColor(c.r, c.g, c.b, 0.4f + 0.4f * pulse);
+                ring(sr, b.x, b.y, r * 0.62f, 2.5f, 24);
+                for (int i = 0; i < 6; i++) { // rotating struts
+                    double a = w.time * 0.6 + i * Math.PI / 3;
+                    float ca = (float) Math.cos(a), sa = (float) Math.sin(a);
+                    sr.rectLine(b.x + ca * r * 0.62f, b.y + sa * r * 0.62f, b.x + ca * r, b.y + sa * r, 2.5f);
+                }
+                if (b.side >= 0) {
+                    double a = Math.PI / 3 * b.side + Math.PI / 6;
+                    float ca = (float) Math.cos(a), sa = (float) Math.sin(a);
+                    float tipX = b.x + ca * r * 2.1f, tipY = b.y + sa * r * 2.1f;
+                    float bx = b.x + ca * r * 1.4f, by = b.y + sa * r * 1.4f;
+                    sr.setColor(c.r, c.g, c.b, 0.7f);
+                    sr.triangle(tipX, tipY, bx - sa * r * 0.35f, by + ca * r * 0.35f, bx + sa * r * 0.35f, by - ca * r * 0.35f);
+                }
+                break;
+            }
+            case WRECK: { // a scatter of grey hull shards that fades as it drifts away
+                float a = Math.min(1f, b.life / 60f) * 0.9f;
+                float r = b.radius * (0.5f + 0.5f * (b.maxMetal > 0 ? (float) (b.metal / b.maxMetal) : 1));
+                for (int i = 0; i < 5; i++) {
+                    float ang = i * 1.257f + b.x * 0.013f + w.time * 0.05f * (i % 2 == 0 ? 1 : -1);
+                    float d = r * (0.25f + 0.15f * i);
+                    float px = b.x + (float) Math.cos(ang) * d, py = b.y + (float) Math.sin(ang) * d;
+                    float s = r * (0.45f - 0.05f * i);
+                    sr.setColor(0.55f, 0.55f, 0.58f, a);
+                    sr.triangle(px - s, py - s * 0.4f, px + s * 0.8f, py - s * 0.2f, px, py + s * 0.6f);
+                }
+                sr.setColor(1f, 0.55f, 0.2f, a * (0.4f + 0.3f * (float) Math.sin(w.time * 3 + b.y))); // smouldering core
+                sr.circle(b.x, b.y, r * 0.2f, 6);
                 break;
             }
             default: {
@@ -577,6 +656,49 @@ public class WorldRenderer {
                     tri(sr, -r * 0.1f, 0, -r * 0.7f, r * 0.4f, -r * 0.7f, -r * 0.4f);
                 }
                 break;
+            case PIRATE_BASE: { // jagged ring station with spikes and blinking red running lights
+                float spin = w.time * 0.15f;
+                sr.setColor(1f, 0.25f, 0.2f, 0.05f + 0.03f * (float) Math.sin(w.time * 2));
+                sr.circle(u.x, u.y, r * 1.9f, segs(r * 1.9f));
+                sr.setColor(oc.r * dark, oc.g * dark, oc.b * dark, alpha);
+                for (int i = 0; i < 9; i++) { // spikes
+                    double a = spin + i * Math.PI * 2 / 9;
+                    float ca = (float) Math.cos(a), sa = (float) Math.sin(a);
+                    float a2 = (float) (a + 0.22), a3 = (float) (a - 0.22);
+                    sr.triangle(u.x + ca * r * 1.45f, u.y + sa * r * 1.45f,
+                            u.x + (float) Math.cos(a2) * r * 0.85f, u.y + (float) Math.sin(a2) * r * 0.85f,
+                            u.x + (float) Math.cos(a3) * r * 0.85f, u.y + (float) Math.sin(a3) * r * 0.85f);
+                }
+                sr.setColor(oc.r, oc.g, oc.b, alpha);
+                sr.circle(u.x, u.y, r, segs(r));
+                sr.setColor(0.08f, 0.07f, 0.07f, 1f);
+                sr.circle(u.x, u.y, r * 0.62f, segs(r));
+                sr.setColor(oc.r * 0.8f, oc.g * 0.8f, oc.b * 0.8f, alpha);
+                sr.circle(u.x, u.y, r * 0.3f, 14);
+                for (int i = 0; i < 6; i++) { // running lights
+                    double a = -spin * 2 + i * Math.PI / 3;
+                    boolean on = ((int) (w.time * 3) + i) % 3 == 0;
+                    sr.setColor(1f, 0.2f, 0.15f, on ? 1f : 0.3f);
+                    sr.circle(u.x + (float) Math.cos(a) * r * 0.8f, u.y + (float) Math.sin(a) * r * 0.8f, Math.max(2f, r * 0.07f), 6);
+                }
+                break;
+            }
+            case BARGE: { // wide, boxy hauler with an ore hold that fills up
+                sr.setColor(oc.r * dark, oc.g * dark, oc.b * dark, alpha);
+                quad(sr, r * 0.9f, r * 0.7f, -r, r * 0.8f, -r, -r * 0.8f, r * 0.9f, -r * 0.7f);
+                sr.setColor(oc.r, oc.g, oc.b, alpha);
+                quad(sr, r * 1.1f, r * 0.35f, r * 0.5f, r * 0.55f, r * 0.5f, -r * 0.55f, r * 1.1f, -r * 0.35f);
+                sr.setColor(0.12f, 0.12f, 0.15f, 1f);
+                quad(sr, r * 0.35f, r * 0.55f, -r * 0.8f, r * 0.6f, -r * 0.8f, -r * 0.6f, r * 0.35f, -r * 0.55f);
+                float fill = Math.min(1f, u.cargo / Math.max(1f, w.economy.capacity(u)));
+                if (fill > 0) {
+                    if (u.cargoEnergy) sr.setColor(1f, 0.85f, 0.3f, 1f);
+                    else sr.setColor(0.7f, 0.7f, 0.75f, 1f);
+                    float back = -r * 0.8f, len = r * 1.15f * fill;
+                    quad(sr, back + len, r * 0.45f, back, r * 0.45f, back, -r * 0.45f, back + len, -r * 0.45f);
+                }
+                break;
+            }
             case COLONY_SHIP:
             case SURVEYOR:
                 sr.setColor(oc.r * dark, oc.g * dark, oc.b * dark, alpha);
@@ -605,17 +727,155 @@ public class WorldRenderer {
                 sr.setColor(1f, 1f, 0.85f, 0.9f * alpha);
                 sr.rectLine(u.x, u.y, u.x + uc * r * 1.8f, u.y + us * r * 1.8f, 1.5f);
                 break;
-            case MENDER:
-                // repair zone
-                sr.setColor(0.4f, 1f, 0.5f, 0.05f + 0.02f * (float) Math.sin(w.time * 2 + u.id));
+            case MENDER: { // Repair Station: round hub, four docking arms, rotating ring of repair lights
+                sr.setColor(0.4f, 1f, 0.5f, 0.04f + 0.02f * (float) Math.sin(w.time * 2 + u.id));
                 sr.circle(u.x, u.y, u.s.healRange, segs(u.s.healRange));
-                sr.setColor(0.4f, 1f, 0.5f, 0.25f);
+                sr.setColor(0.4f, 1f, 0.5f, 0.22f);
                 ring(sr, u.x, u.y, u.s.healRange, 1.2f * zoom, 48);
+                for (int i = 0; i < 4; i++) { // docking arms with a docked ship silhouette on two of them
+                    double a = Math.PI / 4 + i * Math.PI / 2;
+                    float ca = (float) Math.cos(a), sa = (float) Math.sin(a);
+                    sr.setColor(oc.r * dark, oc.g * dark, oc.b * dark, alpha);
+                    sr.rectLine(u.x + ca * r * 0.6f, u.y + sa * r * 0.6f, u.x + ca * r * 1.45f, u.y + sa * r * 1.45f, r * 0.28f);
+                    sr.setColor(oc.r, oc.g, oc.b, alpha);
+                    sr.circle(u.x + ca * r * 1.5f, u.y + sa * r * 1.5f, r * 0.2f, 8);
+                    if (i % 2 == 0) {
+                        float px = u.x + ca * r * 1.5f - sa * r * 0.35f, py = u.y + sa * r * 1.5f + ca * r * 0.35f;
+                        sr.setColor(0.6f, 0.65f, 0.7f, 0.8f * alpha);
+                        sr.triangle(px + ca * 7, py + sa * 7, px - ca * 5 - sa * 4, py - sa * 5 + ca * 4, px - ca * 5 + sa * 4, py - sa * 5 - ca * 4);
+                    }
+                }
+                sr.setColor(oc.r * dark, oc.g * dark, oc.b * dark, alpha);
+                sr.circle(u.x, u.y, r * 0.85f, segs(r));
                 sr.setColor(oc.r, oc.g, oc.b, alpha);
-                tri(sr, r, 0, -r * 0.8f, r * 0.8f, -r * 0.8f, -r * 0.8f);
+                sr.circle(u.x, u.y, r * 0.62f, segs(r));
+                float spin = w.time * 0.7f;
+                for (int i = 0; i < 10; i++) { // rotating ring of green repair lights
+                    double a = spin + i * Math.PI / 5;
+                    boolean on = ((int) (w.time * 4) + i) % 2 == 0;
+                    sr.setColor(0.4f, 1f, 0.5f, on ? 1f : 0.35f);
+                    sr.circle(u.x + (float) Math.cos(a) * r * 1.05f, u.y + (float) Math.sin(a) * r * 1.05f, Math.max(1.5f, r * 0.07f), 6);
+                }
+                float pulse = 0.75f + 0.25f * (float) Math.sin(w.time * 3);
+                sr.setColor(0.4f, 1f, 0.5f, pulse);
+                sr.rect(u.x - r * 0.4f, u.y - r * 0.11f, r * 0.8f, r * 0.22f);
+                sr.rect(u.x - r * 0.11f, u.y - r * 0.4f, r * 0.22f, r * 0.8f);
+                break;
+            }
+            case BEACON: { // Claim Beacon: a tall mast with a pulsing ring broadcasting the claim
+                float p = (w.time * 0.5f + u.id * 0.13f) % 1f;
+                sr.setColor(oc.r, oc.g, oc.b, 0.25f * (1f - p));
+                ring(sr, u.x, u.y, r * (1.5f + p * 6f), 2f * Math.max(1, zoom * 0.6f), 32);
+                sr.setColor(oc.r * dark, oc.g * dark, oc.b * dark, alpha);
+                sr.triangle(u.x - r * 0.7f, u.y - r, u.x + r * 0.7f, u.y - r, u.x, u.y + r * 1.4f);
+                sr.setColor(oc.r, oc.g, oc.b, alpha);
+                sr.circle(u.x, u.y + r * 0.9f, r * 0.45f, 10);
+                sr.setColor(1f, 1f, 1f, 0.5f + 0.5f * (float) Math.sin(w.time * 5));
+                sr.circle(u.x, u.y + r * 0.9f, r * 0.18f, 6);
+                break;
+            }
+            case PLATFORM:
+            case ION_CANNON: { // gun platforms: octagonal base with a turret barrel toward the target
+                boolean ion = u.cls == ShipClass.ION_CANNON;
+                sr.setColor(oc.r * dark, oc.g * dark, oc.b * dark, alpha);
+                sr.circle(u.x, u.y, r, 8);
+                sr.setColor(oc.r, oc.g, oc.b, alpha);
+                sr.circle(u.x, u.y, r * 0.6f, 8);
+                float ta = u.target != null && !u.target.dead ? (float) Math.atan2(u.target.y - u.y, u.target.x - u.x) : w.time * 0.2f + u.id;
+                sr.setColor(0.75f, 0.78f, 0.85f, alpha);
+                sr.rectLine(u.x, u.y, u.x + (float) Math.cos(ta) * r * (ion ? 2.1f : 1.5f), u.y + (float) Math.sin(ta) * r * (ion ? 2.1f : 1.5f), r * (ion ? 0.45f : 0.3f));
+                if (ion) {
+                    float charge = 1f - Math.max(0, u.cooldown) / u.s.cooldown;
+                    sr.setColor(0.5f, 0.85f, 1f, 0.3f + 0.7f * charge);
+                    sr.circle(u.x, u.y, r * 0.35f * (0.5f + 0.5f * charge), 10);
+                }
+                break;
+            }
+            case REFINERY: { // ore refinery: boxy plant with smelting stacks
+                sr.setColor(oc.r * dark, oc.g * dark, oc.b * dark, alpha);
+                sr.rect(u.x - r, u.y - r * 0.7f, r * 2, r * 1.4f);
+                sr.setColor(oc.r, oc.g, oc.b, alpha);
+                sr.rect(u.x - r * 0.8f, u.y - r * 0.5f, r * 1.6f, r);
+                for (int i = 0; i < 3; i++) {
+                    float sx = u.x - r * 0.6f + i * r * 0.6f;
+                    sr.setColor(0.25f, 0.25f, 0.3f, alpha);
+                    sr.rect(sx - r * 0.12f, u.y + r * 0.5f, r * 0.24f, r * 0.7f);
+                    sr.setColor(1f, 0.55f, 0.2f, 0.5f + 0.4f * (float) Math.sin(w.time * 4 + i));
+                    sr.circle(sx, u.y + r * 1.25f, r * 0.13f, 6);
+                }
+                break;
+            }
+            case SENSOR: { // sensor array: dish on a pylon with a sweeping scan line
+                float sweep = w.time * 1.4f + u.id;
+                sr.setColor(oc.r, oc.g, oc.b, 0.08f);
+                sr.circle(u.x, u.y, r * 6f, 24);
+                sr.setColor(oc.r, oc.g, oc.b, 0.5f);
+                sr.rectLine(u.x, u.y, u.x + (float) Math.cos(sweep) * r * 6f, u.y + (float) Math.sin(sweep) * r * 6f, 1.5f * Math.max(1, zoom * 0.5f));
+                sr.setColor(oc.r * dark, oc.g * dark, oc.b * dark, alpha);
+                sr.circle(u.x, u.y, r * 0.7f, 10);
+                sr.setColor(0.8f, 0.85f, 0.9f, alpha);
+                sr.triangle(u.x + (float) Math.cos(sweep) * r, u.y + (float) Math.sin(sweep) * r,
+                        u.x + (float) Math.cos(sweep + 2.3) * r * 0.8f, u.y + (float) Math.sin(sweep + 2.3) * r * 0.8f,
+                        u.x + (float) Math.cos(sweep - 2.3) * r * 0.8f, u.y + (float) Math.sin(sweep - 2.3) * r * 0.8f);
+                break;
+            }
+            case ASCENSION: { // the wonder: concentric rotating rings around a blazing core
+                for (int k = 0; k < 3; k++) {
+                    float rr = r * (1f - k * 0.25f), rot = w.time * (0.3f + k * 0.25f) * (k % 2 == 0 ? 1 : -1);
+                    sr.setColor(0.6f + 0.2f * k, 0.85f, 1f, 0.8f);
+                    for (int i = 0; i < 12; i++) {
+                        double a0 = rot + i * Math.PI / 6, a1 = a0 + Math.PI / 9;
+                        sr.rectLine(u.x + (float) Math.cos(a0) * rr, u.y + (float) Math.sin(a0) * rr,
+                                u.x + (float) Math.cos(a1) * rr, u.y + (float) Math.sin(a1) * rr, 4f);
+                    }
+                }
+                sr.setColor(1f, 0.95f, 0.75f, 0.25f + 0.15f * (float) Math.sin(w.time * 2));
+                sr.circle(u.x, u.y, r * 0.5f, 24);
+                sr.setColor(1f, 1f, 0.9f, 1f);
+                sr.circle(u.x, u.y, r * 0.22f, 16);
+                break;
+            }
+            case CORSAIR: // slim dart with swept wings
+                sr.setColor(oc.r, oc.g, oc.b, alpha);
+                tri(sr, r * 1.4f, 0, -r * 0.7f, r * 0.9f, -r * 0.3f, 0);
+                tri(sr, r * 1.4f, 0, -r * 0.3f, 0, -r * 0.7f, -r * 0.9f);
+                sr.setColor(1f, 0.85f, 0.5f, alpha);
+                tri(sr, r * 0.7f, 0, r * 0.1f, r * 0.2f, r * 0.1f, -r * 0.2f);
+                break;
+            case TEMPEST: // cruiser hull with two missile pods
+                sr.setColor(oc.r * dark, oc.g * dark, oc.b * dark, alpha);
+                quad(sr, r * 1.1f, r * 0.3f, -r, r * 0.45f, -r, -r * 0.45f, r * 1.1f, -r * 0.3f);
+                sr.setColor(oc.r, oc.g, oc.b, alpha);
+                quad(sr, r * 0.4f, r * 0.85f, -r * 0.6f, r * 0.85f, -r * 0.6f, r * 0.5f, r * 0.4f, r * 0.5f);
+                quad(sr, r * 0.4f, -r * 0.5f, -r * 0.6f, -r * 0.5f, -r * 0.6f, -r * 0.85f, r * 0.4f, -r * 0.85f);
+                sr.setColor(1f, 0.5f, 0.3f, alpha);
+                for (int i = -1; i <= 1; i += 2)
+                    sr.circle(ux + uc * r * 0.3f - us * i * r * 0.68f, uy + us * r * 0.3f + uc * i * r * 0.68f, r * 0.1f, 6);
+                break;
+            case SOVEREIGN: // battleship: long armoured hull, twin turret blocks, bright bridge
+                sr.setColor(oc.r * dark, oc.g * dark, oc.b * dark, alpha);
+                quad(sr, r * 1.3f, 0, r * 0.4f, r * 0.6f, -r, r * 0.55f, -r, -r * 0.55f);
+                quad(sr, r * 1.3f, 0, -r, -r * 0.55f, r * 0.4f, -r * 0.6f, r * 1.3f, 0);
+                sr.setColor(oc.r, oc.g, oc.b, alpha);
+                quad(sr, r * 0.9f, r * 0.2f, -r * 0.8f, r * 0.3f, -r * 0.8f, -r * 0.3f, r * 0.9f, -r * 0.2f);
+                sr.setColor(0.2f, 0.2f, 0.25f, 1f);
+                for (int i = 0; i < 2; i++) {
+                    float off = r * (0.45f - i * 0.8f);
+                    sr.circle(ux + uc * off, uy + us * off, r * 0.17f, 10);
+                }
+                sr.setColor(u.overchargeTimer > 0 ? new Color(1f, 0.6f, 0.2f, 1f) : new Color(0.7f, 0.9f, 1f, 0.9f));
+                sr.circle(ux - uc * r * 0.55f, uy - us * r * 0.55f, r * 0.12f, 8);
+                break;
+            case HALCYON: // repair cruiser: rounded hull with a green cross and a soft heal field
+                sr.setColor(0.4f, 1f, 0.5f, 0.05f);
+                sr.circle(u.x, u.y, u.s.healRange, segs(u.s.healRange));
+                sr.setColor(oc.r * dark, oc.g * dark, oc.b * dark, alpha);
+                sr.circle(u.x, u.y, r, segs(r));
+                sr.setColor(oc.r, oc.g, oc.b, alpha);
+                tri(sr, r * 1.25f, 0, -r * 0.4f, r * 0.75f, -r * 0.4f, -r * 0.75f);
                 sr.setColor(0.4f, 1f, 0.5f, 1f);
-                sr.rect(u.x - r * 0.45f, u.y - r * 0.12f, r * 0.9f, r * 0.24f);
-                sr.rect(u.x - r * 0.12f, u.y - r * 0.45f, r * 0.24f, r * 0.9f);
+                sr.rect(u.x - r * 0.35f, u.y - r * 0.1f, r * 0.7f, r * 0.2f);
+                sr.rect(u.x - r * 0.1f, u.y - r * 0.35f, r * 0.2f, r * 0.7f);
                 break;
             case HIVE:
                 sr.setColor(oc.r * dark, oc.g * dark, oc.b * dark, alpha);
@@ -648,6 +908,19 @@ public class WorldRenderer {
                 sr.setColor(oc.r, oc.g, oc.b, alpha);
                 quad(sr, r * 1.3f, 0, 0, r * 0.6f, -r * 0.9f, 0, 0, -r * 0.6f);
                 break;
+            case PATROL: // sleek arrowhead with twin engine glows
+                sr.setColor(oc.r * dark, oc.g * dark, oc.b * dark, alpha);
+                tri(sr, r * 1.5f, 0, -r * 0.9f, r * 0.85f, -r * 0.9f, -r * 0.85f);
+                sr.setColor(oc.r, oc.g, oc.b, alpha);
+                tri(sr, r * 1.3f, 0, -r * 0.5f, r * 0.45f, -r * 0.5f, -r * 0.45f);
+                sr.setColor(0.5f, 0.85f, 1f, 0.9f * alpha);
+                for (int i = -1; i <= 1; i += 2)
+                    sr.circle(ux - uc * r * 0.95f - us * i * r * 0.5f, uy - us * r * 0.95f + uc * i * r * 0.5f, Math.max(1.5f, r * 0.18f), 6);
+                break;
+            case PATROL_SKIFF: // tiny dart
+                sr.setColor(oc.r, oc.g, oc.b, alpha);
+                tri(sr, r * 1.4f, 0, -r * 0.8f, r * 0.6f, -r * 0.8f, -r * 0.6f);
+                break;
             default: // lancer, drone, raider, guard
                 sr.setColor(oc.r, oc.g, oc.b, alpha);
                 tri(sr, r, 0, -r * 0.8f, r * 0.75f, -r * 0.35f, 0);
@@ -659,12 +932,48 @@ public class WorldRenderer {
             sr.setColor(1f, 0.75f, 0.4f, 0.6f * alpha);
             sr.circle(u.x - uc * r * 0.9f, u.y - us * r * 0.9f, Math.max(1.5f, r * 0.18f), 6);
         }
+        // warp cruise: a long bright streak behind the ship
+        if (u.warping && (u.vx * u.vx + u.vy * u.vy) > 100) {
+            float sp = (float) Math.hypot(u.vx, u.vy);
+            float len = Math.min(900f, sp * 0.6f);
+            float tx = u.x - u.vx / sp * len, ty = u.y - u.vy / sp * len;
+            sr.setColor(0.75f, 0.9f, 1f, 0.12f * alpha);
+            sr.rectLine(u.x, u.y, tx, ty, Math.max(3f, r * 1.2f));
+            sr.setColor(0.9f, 0.97f, 1f, 0.55f * alpha);
+            sr.rectLine(u.x, u.y, u.x - u.vx / sp * len * 0.5f, u.y - u.vy / sp * len * 0.5f, Math.max(1.5f, r * 0.35f));
+        } else if (u.warpCharge > 0) { // spooling up: a tightening ring
+            sr.setColor(0.75f, 0.9f, 1f, 0.2f + 0.3f * u.warpCharge / spacerts.systems.MovementSystem.WARP_SPOOL);
+            ring(sr, u.x, u.y, r * (3f - 1.6f * u.warpCharge / spacerts.systems.MovementSystem.WARP_SPOOL), 1.5f * Math.max(1, zoom * 0.5f), 16);
+        }
         // colony speed boost: a blue thrust trail
         if (u.boosted && (u.vx * u.vx + u.vy * u.vy) > 100) {
             float sp = (float) Math.hypot(u.vx, u.vy);
             float tx = u.x - u.vx / sp * (r + 22), ty = u.y - u.vy / sp * (r + 22);
             sr.setColor(0.45f, 0.85f, 1f, 0.35f * alpha);
             sr.rectLine(u.x - u.vx / sp * r * 0.8f, u.y - u.vy / sp * r * 0.8f, tx, ty, Math.max(1.5f, r * 0.3f));
+        }
+        // stunned by a Martyr Shockwave: a crackling blue halo
+        if (u.stunTimer > 0) {
+            float flick = 0.35f + 0.3f * (float) Math.sin(w.time * 25 + u.id);
+            sr.setColor(0.55f, 0.8f, 1f, flick);
+            ring(sr, u.x, u.y, r * 1.5f, 2f * Math.max(1, zoom * 0.5f), 16);
+        }
+        // a relocating Asteroid Miner kicks up a dust trail
+        if (u.relocating) {
+            for (int i = 1; i <= 3; i++) {
+                sr.setColor(0.6f, 0.55f, 0.45f, 0.25f / i);
+                sr.circle(u.x - uc * r * (1.2f + i * 0.6f), u.y - us * r * (1.2f + i * 0.6f), r * (0.3f + 0.15f * i), 8);
+            }
+        }
+        // retreating for repairs: an amber double chevron above the ship
+        if (u.retreating) {
+            float s = Math.max(5f, 5f * zoom), cy = u.y + r + 16 * Math.max(1f, zoom * 0.6f) + s;
+            sr.setColor(1f, 0.75f, 0.3f, 0.6f + 0.3f * (float) Math.sin(w.time * 6));
+            for (int i = 0; i < 2; i++) {
+                float yy = cy - i * s * 0.9f;
+                sr.rectLine(u.x - s, yy, u.x, yy - s * 0.7f, 1.5f * Math.max(1f, zoom * 0.5f));
+                sr.rectLine(u.x, yy - s * 0.7f, u.x + s, yy, 1.5f * Math.max(1f, zoom * 0.5f));
+            }
         }
     }
 
@@ -695,9 +1004,9 @@ public class WorldRenderer {
         if (zoom < 3.2f) {
             font.getData().setScale(0.8f);
             for (Body b : w.bodies) {
-                if (b.dead || b.kind == Body.Kind.ASTEROID || !inView(b.x, b.y, b.radius) || !w.player.vision.isExplored(b.x, b.y)) continue;
+                if (b.dead || (b.depletes() && !b.giant) || !inView(b.x, b.y, b.radius) || !w.player.vision.isExplored(b.x, b.y)) continue;
                 cam.project(v3.set(b.x, b.y - b.radius - 14, 0));
-                String s = b.kind == Body.Kind.STAR ? b.name : b.name + "  (" + b.type.title + ")";
+                String s = b.kind == Body.Kind.STAR || b.isGate() || b.giant ? b.name + (b.giant ? "  (" + String.format("%,d", (long) b.metal) + " metal)" : "") : b.name + "  (" + b.type.title + ")";
                 if (b.kind == Body.Kind.PLANET && b.guarded()) {
                     font.setColor(1f, 0.45f, 0.4f, 0.9f);
                     font.draw(batch, "DEFENDED - " + b.turretsAlive() + " turrets", v3.x - 150, v3.y - 14, 300, Align.center, false);

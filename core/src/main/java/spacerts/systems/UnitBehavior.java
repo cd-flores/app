@@ -18,6 +18,10 @@ public class UnitBehavior {
     private final World w;
     private final List<Unit> tmp = new ArrayList<>();
     private static final Color HEAL = new Color(0.4f, 1f, 0.5f, 1f);
+    /** Base repair: ships near their own colony, factory or mothership, out of combat, regain 2% max HP per second. */
+    public static final float REPAIR_RANGE = 400f, REPAIR_DELAY = 6f, REPAIR_RATE = 0.02f;
+    /** Seconds between healer repair pulses. */
+    private static final float HEAL_PULSE = 0.25f;
 
     public UnitBehavior(World w) {
         this.w = w;
@@ -30,10 +34,15 @@ public class UnitBehavior {
         if (u.shield < u.maxShield() && w.time - u.lastHit > 4f)
             u.shield = Math.min(u.maxShield(), u.shield + u.shieldRegen() * u.owner.shieldRegenMult() * dt);
         if (u.owner.has(Tech.MS_REPAIR) && (u.cls == ShipClass.MOTHERSHIP || u.cls.isBuilding()) && u.hp < u.maxHp())
-            u.hp = Math.min(u.maxHp(), u.hp + (u.cls == ShipClass.MOTHERSHIP ? 12f : 4f) * dt);
+            u.hp = Math.min(u.maxHp(), u.hp + (u.cls == ShipClass.MOTHERSHIP ? 12f : 4f) * Unit.DURABILITY * dt);
+        boolean refit = u.owner.has(Tech.RAPID_REFIT); // Rapid Refit Docks: 4%/s, starting 3 s after combat
+        if (!u.s.stationary && u.hp < u.maxHp() && w.time - u.lastHit > (refit ? REPAIR_DELAY / 2 : REPAIR_DELAY)
+                && w.nearestRepairPoint(u.owner, u.x, u.y, REPAIR_RANGE) != null)
+            u.hp = Math.min(u.maxHp(), u.hp + u.maxHp() * REPAIR_RATE * (refit ? 2 : 1) * dt); // docked at a colony, factory or mothership
         if (u.cooldown > 0) u.cooldown -= dt;
         if (u.abilityCd > 0) u.abilityCd -= dt;
         if (u.tauntTimer > 0) u.tauntTimer -= dt;
+        if (u.overchargeTimer > 0) u.overchargeTimer -= dt;
         if (u.forcedTimer > 0) {
             u.forcedTimer -= dt;
             if (u.forcedTarget != null && !u.forcedTarget.dead && u.armed()) u.target = u.forcedTarget;
@@ -47,7 +56,8 @@ public class UnitBehavior {
         if (u.order == Order.COLONIZE && u.s.colonizer) { colonize(u); return; }
         if (u.order == Order.SURVEY && u.s.surveyor) { survey(u); return; }
         if (u.owner.kind == Faction.Kind.NATIVES) { natives(u, dt); return; }
-        if (u.s.healRate > 0) { mender(u, dt); return; }
+        if (u.s.healRate > 0) heal(u, dt); // Repair Stations and Halcyon cruisers
+        if (u.s.stationary && !u.armed()) return; // unarmed structures just sit there
         if (!u.owner.isPlayer() && u.s.ability != Ability.NONE) autoAbility(u);
         orders(u, dt);
     }
@@ -82,6 +92,11 @@ public class UnitBehavior {
                 break;
             default: // IDLE (and stray orders)
                 if (armed) autoAcquire(u, dt, u.s.stationary ? u.range() : u.range() + 250);
+                if (armed && u.target == null && counterBattery(u) && u.acquireTimer > 0.3f) u.target = revealedSniper(u);
+                if (u.target == null && isPatroller(u)) { // Patrol Ships and skiffs fly their circuit when idle
+                    patrolNext(u);
+                    break;
+                }
                 if (u.target != null && !u.s.stationary
                         && Math.hypot(u.target.x - u.anchorX, u.target.y - u.anchorY) > 900 + u.range()) {
                     u.target = null;
@@ -94,12 +109,39 @@ public class UnitBehavior {
 
     private boolean inRange(Unit u, Unit t) {
         float d = u.dist(t) - t.radius;
-        return d <= u.range() && d >= u.s.minRange;
+        return d <= rangeVs(u, t) && d >= u.s.minRange;
+    }
+
+    /** Counter-Battery Turrets: planet turrets and Defense Platforms reach revealed snipers out to 1100. */
+    public static final float COUNTER_BATTERY_RANGE = 1100f;
+
+    private static boolean counterBattery(Unit u) {
+        return (u.cls == ShipClass.TURRET || u.cls == ShipClass.PLATFORM) && u.owner.has(Tech.COUNTER_BATTERY);
+    }
+
+    /** Weapon range against a particular target (longer for counter-battery guns firing at snipers). */
+    private float rangeVs(Unit u, Unit t) {
+        if (t.s.type == spacerts.units.ArmorType.ARTILLERY && counterBattery(u)) return Math.max(u.range(), COUNTER_BATTERY_RANGE);
+        return u.range();
+    }
+
+    /** A sniper within counter-battery range that the turret's side can currently see (it has just fired), or null. */
+    private Unit revealedSniper(Unit u) {
+        w.hash.query(u.x, u.y, COUNTER_BATTERY_RANGE + 80, tmp);
+        Unit best = null;
+        float bd = Float.MAX_VALUE;
+        for (Unit c : tmp) {
+            if (c.dead || c.owner == u.owner || c.s.type != spacerts.units.ArmorType.ARTILLERY) continue;
+            if (c.owner.kind == Faction.Kind.NATIVES || !w.canSee(u.owner, c)) continue;
+            float d = u.dist(c) - c.radius;
+            if (d <= COUNTER_BATTERY_RANGE && d < bd) { bd = d; best = c; }
+        }
+        return best;
     }
 
     private void engage(Unit u, Unit t) {
         float d = u.dist(t) - t.radius;
-        if (d > u.range()) {
+        if (d > rangeVs(u, t)) {
             if (!u.s.stationary) goal(u, t.x, t.y, u.range() * 0.85f + t.radius);
         } else if (d < u.s.minRange) {
             if (!u.s.stationary) {
@@ -110,6 +152,37 @@ public class UnitBehavior {
         } else if (u.cooldown <= 0) {
             w.combat.fire(u, t);
         }
+    }
+
+    // ------------------------------------------------------------------ patrols
+
+    private static boolean isPatroller(Unit u) {
+        return (u.cls == ShipClass.PATROL || u.cls == ShipClass.PATROL_SKIFF) && u.owner.isMajor();
+    }
+
+    /**
+     * Next stop on the patrol circuit: the owner's colonies in nearest-next order starting from the Mothership,
+     * then back to the Mothership, round and round. Attack-moves, so it fights whatever it meets.
+     */
+    private void patrolNext(Unit u) {
+        Unit ms = u.owner.mothership;
+        List<Unit> route = new ArrayList<>();
+        List<Unit> left = new ArrayList<>(u.owner.colonies);
+        float cx = ms != null && !ms.dead ? ms.x : u.x, cy = ms != null && !ms.dead ? ms.y : u.y;
+        while (!left.isEmpty()) { // nearest-next tour
+            Unit best = left.get(0);
+            for (Unit c : left) if (c.dist(cx, cy) < best.dist(cx, cy)) best = c;
+            route.add(best);
+            left.remove(best);
+            cx = best.x;
+            cy = best.y;
+        }
+        if (ms != null && !ms.dead) route.add(ms);
+        if (route.isEmpty()) return;
+        Unit stop = route.get(u.patrolStop % route.size());
+        u.patrolStop = (u.patrolStop + 1) % route.size();
+        float a = (u.id * 2.39996f) % 6.2832f, r = stop.radius + 120;
+        u.command(Order.ATTACK_MOVE, stop.x + (float) Math.cos(a) * r, stop.y + (float) Math.sin(a) * r);
     }
 
     private void autoAcquire(Unit u, float dt, float r) {
@@ -202,6 +275,11 @@ public class UnitBehavior {
                 w.combat.nova(u, t.x, t.y);
                 u.abilityCd = 35;
                 return null;
+            case OVERCHARGE:
+                u.overchargeTimer = 6f;
+                u.abilityCd = 30;
+                w.ring(u.x, u.y, u.radius * 2.5f, new Color(1f, 0.6f, 0.2f, 1f), 0.6f);
+                return null;
             default:
                 return "No ability";
         }
@@ -217,6 +295,7 @@ public class UnitBehavior {
                 if (u.target != null && u.shield < u.maxShield() * 0.6f) useAbility(u);
                 break;
             case NOVA:
+            case OVERCHARGE:
                 if (u.target != null) useAbility(u);
                 break;
             default:
@@ -312,26 +391,19 @@ public class UnitBehavior {
         }
     }
 
-    /** Mobile repair station: repairs every damaged ally (ships and structures) inside its zone at once. */
-    private void mender(Unit u, float dt) {
+    /** Repair Station / Halcyon: repairs every damaged ally (ships and structures) inside its zone at once. */
+    private void heal(Unit u, float dt) {
+        u.healTimer += dt;
+        if (u.healTimer < HEAL_PULSE) return;
+        dt = u.healTimer; // repair the whole interval at once
+        u.healTimer = 0;
         float r = u.s.healRange;
         w.hash.query(u.x, u.y, r + 120, tmp);
         for (Unit c : tmp) {
             if (c.dead || c.owner != u.owner || c == u || c.cls == ShipClass.DRONE) continue;
             if (c.dist(u) - c.radius > r || c.hp >= c.maxHp()) continue;
-            c.hp = Math.min(c.maxHp(), c.hp + u.s.healRate * dt);
-            if (w.rng.nextFloat() < dt * 1.5f) w.beam(u.x, u.y, c.x, c.y, HEAL, 1.5f, 0.25f);
-        }
-        switch (u.order) {
-            case MOVE:
-            case ATTACK_MOVE:
-            case ATTACK:
-                goal(u, u.tx, u.ty, 6);
-                if (u.dist(u.tx, u.ty) < u.radius + 15) u.idle();
-                break;
-            default: // parked: stay where it was put
-                if (u.dist(u.anchorX, u.anchorY) > 30) goal(u, u.anchorX, u.anchorY, 8);
-                break;
+            c.hp = Math.min(c.maxHp(), c.hp + u.s.healRate * Unit.DURABILITY * dt);
+            if (w.rng.nextFloat() < dt * 1.5f) w.beam(u.x, u.y, c.x, c.y, HEAL, 1.5f, 0.35f);
         }
     }
 }

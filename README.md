@@ -13,31 +13,62 @@ Requires a JDK (17 or newer; developed on 25). The first build downloads Gradle 
 ## The game
 
 - **Mothership**: builds Harvesters. If it is destroyed, you lose.
-- **Economy**: Harvesters gather **energy** from stars and **metal** from asteroids and barren planets. Asteroids run out, and new fields drift in over time. Every colony also trickles in energy and metal on its own, much more slowly than harvesting.
+- **Economy**: Harvesters gather **energy** from stars and **metal** from asteroids, barren planets and wrecks. Asteroids run out, and new fields drift in over time. Every colony also trickles in energy and metal on its own, much more slowly than harvesting.
+- **Richer asteroids**: every asteroid holds 3x the metal (1,500–3,600 each).
+- **Giant asteroids** hold **1–5 million metal** each. They're huge, with craters and glinting ore veins, and are named on the map. About a third of the Hive's Asteroid Belts start with one, and classic maps have two. A single Asteroid Miner takes days of play to drain one.
+- **Asteroid showers**: once a minute, every system rolls for a fresh field to drift in. The chance is **1 in 60** per hex, or **1 in 20** in Asteroid Belts and on the classic map. A shower brings a giant 6% of the time (12% in belts). Showers stop in systems that are already full (60 asteroids, or 120 in belts). You're told about showers in explored or owned space.
+- **Mining Barges** (built at a Ship Factory) are tough, slow haulers. They hold 150 cargo (a Harvester holds 30) and mine 1.5x faster, but they can't build.
+- **Wreck salvage**: destroyed ships leave wrecks worth **half** their metal cost (pirates leave fixed amounts). Salvage pays metal only. Harvesters and barges collect it. Wrecks drift away after 5 minutes, so battlefields are worth holding.
+- **Scarce finds** (shown in the top bar once you find one) turn up at low odds:
+
+  | Item | Found by |
+  |---|---|
+  | **Dark Matter** | Harvesters unloading asteroid metal (2% per load); Asteroid Miners (4% per minute) |
+  | **Star Essence** | Solar Collectors (4% per minute); harvesters unloading starlight (1%) |
+  | **Neutronium** | Salvaging a wreck to the end (8%); pirate stronghold wrecks always hold 2 |
+  | **Exotic Matter** | Ruins outposts (12% per relic); destroyed pirate Dreadnoughts (25%) |
+
+  They pay for tier III upgrades, the tier III ships, the Ion Cannon, the Ascension Gate and three late techs: Neutronium Plating (+20% hull), Hyperdrive Lattice (+10% speed, instant gate recharge) and Dark Matter Reactors (+30% build speed).
+- **Tier upgrades**: select the Mothership or a Ship Factory and press **U** (or use its upgrade button).
+  - **Mothership II / III** (1500/1500 + rare items, then 4000/4000 + scarce finds): +30% hull and shield and an extra gun per tier, and they unlock more Harvester buildings.
+  - **Ship Factory II / III**, per factory: each tier builds **30% faster**. Tier II unlocks Corsair, Tempest, Aegis and Phantom; tier III unlocks Sovereign, Halcyon and Leviathan.
+  - **Research Hub**: the Hub Expansion II/III techs are the lab upgrades. Each tier researches **25% faster**.
+  - **Stellar Refinement** (endgame, at the Mothership; needs Mothership III and Research Hub III): a stacking upgrade, **+2% to all mining, harvesting and energy collection per level, up to 999 levels**. Each level takes 60 s and costs **2000E / 2000M × (1 + ln(1 + level))**: level 10 costs 3.4x, level 100 costs 5.6x, and level 999 costs 7.9x. Only one level can be queued at a time.
 - **Harvesters also build** (select one, then press a number key):
 
   | Key | Structure | Where |
   |---|---|---|
-  | 1 | **Ship Factory**: builds every warship and Colony Ship. Build as many as you like. Can move, as slowly as the Mothership. | Click open space |
+  | 1 | **Ship Factory**: builds every warship, Colony Ship and Mining Barge. Build as many as you like. Can move, as slowly as the Mothership. | Click open space |
   | 2 | **Research Hub** (only one). Can move, as slowly as the Mothership. | Click open space |
-  | 3 | **Turret Upgrade**: +2 defense turrets | Click one of your colonies |
-  | 4 | **Shield Upgrade**: +400 planetary shield and faster recharge | Click one of your colonies |
-  | 5 | **Mender**: a crawling mobile repair station (6 housing) that heals every ally around it | Where the harvester is |
-
-  | 6 | **Solar Collector**: produces 6 energy/s by itself, max 2 per star | Click a star |
-  | 7 | **Asteroid Miner**: mines 5 metal/s by itself, moving on to the next asteroid within 450 as each runs out (4/s forever on a metal planet); one per field | Click an asteroid or metal-rich planet |
+  | 3 | **Repair Station**: repairs every ally within 400; damaged ships retreat to it. No housing. | Click open space |
+  | 4 | **Solar Collector**: produces 6 energy/s by itself, max 2 per star | Click a star |
+  | 5 | **Asteroid Miner**: mines 5 metal/s by itself, moving on to the next asteroid within 450 as each runs out, and once the whole field is dry it slowly crawls (speed 15) to the nearest asteroid clump in its system (4/s forever on a metal planet); one per field | Click an asteroid or metal-rich planet |
+  | 6 | **Claim Beacon** (Hive only): claims the hex it stands in | Click open space |
+  | 7 | **Defense Platform** (Mothership II): standalone heavy turret | Click open space |
+  | 8 | **Ore Refinery** (Mothership II): drop-off point; metal unloaded within 1500 is worth 25% more | Click open space |
+  | 9 | **Sensor Array** (Mothership II): 2500 vision, detects cloaked ships | Click open space |
+  | 0 | **Ion Cannon** (Mothership III): range-1600 siege battery, 400 armor-piercing damage with splash | Click open space |
+  | - | **Ascension Gate** (Hive only, Mothership III): the endgame wonder | The conquered Citadel hex |
 
   Collectors and miners need no hauling and out-farm a harvester (about 2-3/s), but pirates like to raid them.
 
-  Each colony has **5 upgrade points**. Every Turret or Shield Upgrade spends one, so split them however you like (for example 5 turrets, 5 shields, or 3 + 2).
-
   The cost is paid when you give the order and refunded if the harvester is stopped or destroyed first.
+- **Planet upgrades**: click one of your colonies, then press **1** (Turret Upgrade: +2 defense turrets) or **2** (Shield Upgrade: +2000 planetary shield and faster recharge), or use the buttons. The nearest free Harvester flies over, builds it, and goes back to harvesting. Each colony has **5 upgrade points** to split however you like (for example 5 turrets, 5 shields, or 3 + 2).
 - **Rally flag**: press **F** and click to plant it. New warships from every factory gather there. **Shift+F** removes it.
 - **Housing**: your fleet size is capped by housing.
-  - **Habitable worlds** (undefended): send a Colony Ship for +10 housing.
-  - **Fortified worlds** (defended): native turrets and guards respawn while the turrets stand. Destroy the turrets, then colonize for +25 housing.
-- **Colony boost**: ships fly 50% faster when heading to one of your own colonies.
-- **Research Hub**: researches 26 techs across five branches (military, economy, colony, mothership, hub tiers) and builds **Surveyors**.
+  - **Mothership**: 35 housing.
+  - **Habitable worlds** (undefended): send a Colony Ship for +30 housing.
+  - **Fortified worlds** (defended): native turrets and guards respawn while the turrets stand. Destroy the turrets, then colonize for +65 housing.
+  - Every new colony comes with a free Harvester that starts working straight away.
+- **Travel boosts** (the highest one applies; they don't stack):
+  - 2x speed when heading to one of your own colonies.
+  - 1.75x when heading to any other planet.
+  - 1.75x while charging into an attack, until the ship is in weapon range.
+- **Long fights**: every ship, structure, colony and turret has 5x the HP and shields (weapons are unchanged), so battles are drawn-out fights where you wear the enemy down. Shields recover at **half speed**, but **colonies carry 5x the shield** (and recharge 5x faster to match), so conquered planets are real fortresses.
+- **Housing per ship**: every ship costs 1 more housing than before except infantry (Lancers stay at 1). For example, Harvester 2, Bulwark 5, Leviathan 21.
+- **Auto-retreat** (per ship, toggle with **R**): a warship below 25% hull pulls back to the nearest Repair Station or base (colony, factory, Mothership), repairs to 90%, then attack-moves back to where it left the fight. This works for rivals too.
+- **Base repair**: any ship near your colony, factory or Mothership that has been out of combat for 6 s repairs 2% of its hull per second.
+- **Research Hub**: researches 37 techs across five branches (military, economy, colony, mothership, hub tiers) and builds **Surveyors**.
 - **Surveyors** land on uninhabitable planets and build an outpost that extracts that planet's rare item:
 
   | Planet | Rare item |
@@ -50,6 +81,7 @@ Requires a JDK (17 or newer; developed on 25). The first build downloads Gradle 
 
   Rare items pay for upgrades and for the rare ships.
 - **Warships**: Lancers beat Longbows, Longbows beat Bulwarks, and Bulwarks beat Lancers.
+- **Logarithmic warship pricing**: each warship type gets pricier the more of it you already have (alive or queued, counted per squad): **price = base × (1 + 0.35 × ln(1 + copies))**. That's +24% for your 2nd, +84% with 10 in service, and +138% with 50. A different type starts again at base price, and losses bring the price back down. Harvesters, barges, colony ships, surveyors, upgrades and structures stay at base price, and rare-item costs don't scale. Cancelling refunds what you actually paid. Salvage stays at 50% of the base metal cost.
 
   | Ship | Role | Notes |
   |---|---|---|
@@ -57,13 +89,34 @@ Requires a JDK (17 or newer; developed on 25). The first build downloads Gradle 
   | Lancer | Infantry | Squad of 3 |
   | Bulwark | Tank | Q: Taunt |
   | Longbow | Sniper | Reload 5.5 s; revealed to its victims for 4 s each time it fires |
-  | Mender | Mobile repair station | Built by Harvesters; crawls (speed 12); 6 housing; heals everything within 400 |
+  | Mining Barge | Hauler | Not a warship; 150 cargo, 1.5x mining speed, salvages wrecks; 4 housing |
+  | Patrol Ship | Patrol | Mothership II (built at the Mothership); 1 housing; flies a circuit of every colony and back to the Mothership on its own; faster than infantry with twice its health but lighter guns; splits into 2 Patrol Skiffs when destroyed |
   | Hive | Carrier | Needs research |
-  | Phantom | Cloaked sniper | Rare; needs research and rare items; reload 6 s; firing reveals it for 4 s, even through cloak |
-  | Aegis | Shield-bubble tank | Rare; needs research and rare items |
-  | Leviathan | Massive capital ship | Rare; needs research and rare items; Q: Nova Cannon |
+  | Corsair | Strike frigate pair | Factory II; very fast, bonus vs light hulls |
+  | Tempest | Missile cruiser | Factory II; range 700, big splash: breaks up swarms |
+  | Phantom | Cloaked sniper | Factory II; rare; needs research and rare items; reload 6 s; firing reveals it for 4 s, even through cloak |
+  | Aegis | Shield-bubble tank | Factory II; rare; needs research and rare items |
+  | Sovereign | Battleship | Factory III; scarce finds; twin batteries; Q: Overcharge (double rate of fire for 6 s) |
+  | Halcyon | Repair cruiser | Factory III; keeps pace with the fleet, repairs everything within 300 three times as fast as a Repair Station |
+  | Leviathan | Massive capital ship | Factory III; rare; needs research and rare items; Q: Nova Cannon |
 
 - **Opponents**: 1 to 3 AI rival empires that expand, research and attack, plus native garrisons and pirate raids that grow forever.
+- **Pirates: Hive Galaxy** (main menu: set Opponents to 0): a long campaign with no rival empires, meant to be played over many sessions. Instead:
+  - **The map** is a honeycomb of **91 hexagonal systems** (centre + 5 rings), joined by **jump gates** on every shared edge. You start in the **bottom** hex.
+  - **EVE-scale space:** each hex is about 21,600 across (hex radius 10,800), and the whole hive is about 200,000 × 230,000. Each hex holds about 3x the stars, planets, asteroid fields and pirate patrols, spread out into clusters. Zoom out up to 24x to see a whole hex.
+  - **Warp cruise:** a ship heading more than 3,000 away, with no target and not hit in the last 5 s, spools its warp drive for 2 s and then cruises at **4x speed**, leaving a bright streak. It drops out of warp 1,200 from its goal, or as soon as it fights, gets hit or is slowed. Every side uses it, including pirate raids and harvesters on long hauls.
+  - **Conquest, hex by hex:** every hex's **danger** is its jump distance from home (0 to 10, the Pirate Citadel at the top). Patrol fleets hold every hex: 3 Raiders near home, heavy fleets with Dreadnoughts near the top.
+    - Build a **Claim Beacon** in a hex to own it: +0.5 energy and metal per second, wide vision, and no pirate stronghold can rise in or next to it.
+    - On the galaxy map, grey hexes are unclaimed, blue are yours, orange are contested and red are pirate.
+    - Pirate raids scale with your **frontier** (the most dangerous hex you hold), not the clock, and they hit your frontier hexes hardest.
+  - **Endgame:** destroy the **Pirate Citadel** (3x a stronghold, huge garrison), claim its hex, and at Mothership III build the **Ascension Gate** (6000/6000 + scarce finds, 8 minutes). While it's under construction, every stronghold sends a surge at it every minute. Finish it and you win; you can keep playing afterwards.
+  - **Autosave** every 5 game minutes to `nebula_dominion_autosave.json`; press **A** on the main menu to load it.
+  - **Gates:** right-click a gate to fly through it, or double-click it to look through. Orders to another system route through the gates automatically.
+  - **Galaxy map:** **Tab** opens it over the background. Click a hex to view it, or right-click to send your selected ships there.
+  - **Varied systems:** Stellar Nurseries (many stars), Asteroid Belts, Garden Clusters (many habitable worlds), Fortress Worlds, Rare Frontiers, Ancient Ruins, Nebulae (vision reduced), Dead Voids (old wrecks to salvage) and Pirate Havens.
+  - **Pirate strongholds:** each keeps a garrison on station that it slowly rebuilds, and raids launch from them and travel through the gates. Destroying one weakens raids and leaves a 1500-metal wreck, but new strongholds rise in far-off systems, so the game is endless.
+  - **J** jumps the camera to the latest alert.
+  - **Background:** a slowly spinning spiral galaxy of glowing stars.
 - **Difficulty** (main menu, Up / Down):
 
   | | Easy | Normal | Hard |
@@ -78,7 +131,6 @@ Requires a JDK (17 or newer; developed on 25). The first build downloads Gradle 
 - **Auto-defense** (on by default, toggle with **G** or the top-bar button):
   - Idle warships near a base attack enemies that come within range of your colonies, factories, hub or Mothership, sending about twice the threat's strength. They return to their post afterwards.
   - Harvesters flee from raiders and go back to the same resource once it's safe.
-  - Ships below 30% HP retreat to the nearest Mender and come back once repaired.
   - Your ships focus fire on targets allies are already shooting and on wounded enemies.
   - Ships you are giving orders to are never overridden.
 
@@ -91,6 +143,8 @@ Requires a JDK (17 or newer; developed on 25). The first build downloads Gradle 
 | Ctrl + Right-click | Attack-move |
 | F / Shift+F | Place / remove the rally flag |
 | G | Toggle auto-defense |
+| R | Toggle auto-retreat for the selected warships |
+| Click a colony, then 1 / 2 | Turret / Shield Upgrade (the nearest Harvester builds it) |
 | Right-click with a Factory or Hub selected | Move it (as slow as the Mothership) |
 | Shift + right-click with a Factory selected | Set that factory's own rally point (overrides the flag) |
 | 1-9, 0, -, = | Build from the selected Mothership, Ship Factory, Hub or Harvester |

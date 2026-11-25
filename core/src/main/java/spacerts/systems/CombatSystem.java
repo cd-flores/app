@@ -23,7 +23,7 @@ public class CombatSystem {
     }
 
     public void fire(Unit u, Unit t) {
-        u.cooldown = u.s.cooldown;
+        u.cooldown = u.s.cooldown * (u.overchargeTimer > 0 ? 0.5f : 1f);
         u.lastFired = w.time;
         hit(u, t, 1f);
         beamFx(u, t);
@@ -35,8 +35,8 @@ public class CombatSystem {
                 if (c != t && !c.dead && c.owner != u.owner && c.dist(t) - c.radius < u.s.splash) hit(u, c, 0.5f);
             w.blast(t.x, t.y, u.s.splash * 0.6f, u.owner.color);
         }
-        if (u.s.multi > 1) {
-            int extra = u.s.multi - 1;
+        if (u.multi() > 1) {
+            int extra = u.multi() - 1;
             w.hash.query(u.x, u.y, u.range() + 80, tmp);
             for (Unit c : tmp) {
                 if (extra <= 0) break;
@@ -69,6 +69,9 @@ public class CombatSystem {
         w.beam(u.x, u.y, t.x, t.y, c, heavy ? 3f : 1.5f, heavy ? 0.3f : 0.1f);
     }
 
+    /** Sniper Deflectors: share of sniper damage that planets ignore. */
+    public static final float SNIPER_DEFLECT = 0.35f;
+
     public void hit(Unit src, Unit t, float mult) {
         float dmg = src.damage() * mult;
         if (src.s.bonusVs != null && t.s.type == src.s.bonusVs) dmg *= src.s.bonusMult;
@@ -78,6 +81,9 @@ public class CombatSystem {
     public void applyDamage(Unit t, float dmg, boolean piercing, Unit src) {
         if (t.dead) return;
         if (!piercing) dmg *= (1f - t.s.armor);
+        // Sniper Deflectors: colonies and their planet turrets shrug off a third of sniper fire
+        if (src != null && src.s.mustStop && src.s.piercing && (t.cls == ShipClass.COLONY || (t.cls == ShipClass.TURRET && t.home != null))
+                && t.owner.has(Tech.SNIPER_DEFLECTORS)) dmg *= 1f - SNIPER_DEFLECT;
         for (Unit a : t.owner.auras)
             if (!a.dead && a != t && a.dist(t) < a.s.aura) {
                 dmg *= 0.7f;
@@ -106,7 +112,7 @@ public class CombatSystem {
             f.lastAttackY = t.y;
             if (f == w.player && w.time - f.lastAlertTime > 20f) {
                 f.lastAlertTime = w.time;
-                w.notify(f, t.s.name + " is under attack!", World.ALERT);
+                w.notify(f, t.s.name + " is under attack" + (w.galaxy.hive ? " in " + w.systemAt(t.x, t.y).name + " (J to jump there)" : "") + "!", World.ALERT);
                 w.alert(t.x, t.y);
             }
         }
@@ -123,7 +129,7 @@ public class CombatSystem {
     public void nova(Unit u, float x, float y) {
         w.hash.query(x, y, 380, tmp);
         for (Unit c : tmp)
-            if (!c.dead && c.owner != u.owner && c.dist(x, y) - c.radius < 300) applyDamage(c, 1500f * u.owner.dmgMult(), true, u);
+            if (!c.dead && c.owner != u.owner && c.dist(x, y) - c.radius < 300) applyDamage(c, 1500f * Unit.DURABILITY * u.owner.dmgMult(), true, u);
         w.beam(u.x, u.y, x, y, NOVA, 8f, 0.5f);
         w.blast(x, y, 300, NOVA);
         w.ring(x, y, 600, NOVA, 1f);

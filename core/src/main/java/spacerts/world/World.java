@@ -20,7 +20,8 @@ import java.util.Random;
 
 /** Whole simulation state plus the per-tick update order. */
 public class World {
-    public static final float SIZE = 12000f;
+    /** Housing the mothership provides on its own. */
+    public static final int BASE_HOUSING = 35;
     public static final Color WHITE = new Color(1, 1, 1, 1);
     public static final Color ALERT = new Color(1f, 0.4f, 0.35f, 1f);
     public static final Color GOOD = new Color(0.45f, 1f, 0.55f, 1f);
@@ -34,6 +35,8 @@ public class World {
     public final int rivalCount;
     public final Difficulty difficulty;
     public final Random rng;
+    /** Separate stream for scarce-find rolls so loot never shifts the battle randomness. */
+    public final Random loot;
     public float time;
 
     public final List<Faction> factions = new ArrayList<>();
@@ -44,7 +47,9 @@ public class World {
     public final List<Effect> effects = new ArrayList<>();
     public final List<Ping> pings = new ArrayList<>();
     public final List<Message> messages = new ArrayList<>();
-    public final SpatialHash hash = new SpatialHash(SIZE, 250f);
+    /** The map areas: one square for classic games, the 91-hex Hive for the pirates-only mode (0 rivals). */
+    public final Galaxy galaxy;
+    public final SpatialHash hash;
 
     public final CombatSystem combat;
     public final UnitBehavior behavior;
@@ -54,7 +59,11 @@ public class World {
     public final ThreatDirector threats;
     public final ConstructionSystem construction;
     public final AutoDefense autoDefense;
+    /** Hive conquest: hex control, hex income, the frontier. */
+    public final spacerts.systems.ConquestSystem conquest;
 
+    /** Pirates-only mode: seconds until the next pirate stronghold may rise (see PirateBases). */
+    public float pirateRespawn;
     public int nextId = 1;
     public int initialAsteroids;
     public boolean gameOver, victoryAnnounced;
@@ -68,8 +77,12 @@ public class World {
     public World(long seed, int rivals, Difficulty difficulty) {
         this.difficulty = difficulty != null ? difficulty : Difficulty.NORMAL;
         this.seed = seed;
-        this.rivalCount = Math.max(1, Math.min(3, rivals));
+        this.rivalCount = Math.max(0, Math.min(3, rivals));
         this.rng = new Random(seed * 31 + 7);
+        this.loot = new Random(seed * 131 + 17);
+        this.galaxy = rivalCount == 0 ? Galaxy.hive() : Galaxy.classic();
+        // small cells: separation and weapon queries are short-range, and clumped fleets stay cheap
+        this.hash = new SpatialHash(galaxy.width, galaxy.height, galaxy.hive ? 400f : 150f);
         player = add(new Faction(0, "Your Empire", new Color(0.3f, 0.8f, 1f, 1f), Faction.Kind.PLAYER));
         for (int i = 0; i < rivalCount; i++)
             add(new Faction(factions.size(), RIVAL_NAMES[i], RIVAL_COLORS[i], Faction.Kind.RIVAL));
@@ -84,18 +97,30 @@ public class World {
         threats = new ThreatDirector(this);
         construction = new ConstructionSystem(this);
         autoDefense = new AutoDefense(this);
+        conquest = new spacerts.systems.ConquestSystem(this);
         for (Faction f : factions) if (f.kind == Faction.Kind.RIVAL) f.ai = new RivalAI(this, f);
     }
 
     private Faction add(Faction f) {
         factions.add(f);
+        if (f.isMajor()) f.vision = new VisionGrid(galaxy.width, galaxy.height, galaxy.hive ? 1000f : 250f);
         return f;
+    }
+
+    /** Pirates-only mode: no rival empires, the Hive galaxy, pirate strongholds. */
+    public boolean piratesOnly() {
+        return rivalCount == 0;
+    }
+
+    public StarSystem systemAt(float x, float y) {
+        return galaxy.systemAt(x, y);
     }
 
     // ------------------------------------------------------------------ tick
 
     public void update(float dt) {
         time += dt;
+        galaxy.indexBodies(bodies);
         hash.rebuild(units);
 
         visionTimer -= dt;
@@ -110,6 +135,7 @@ public class World {
         threats.update(dt);
         for (Faction f : factions) if (f.ai != null && !f.eliminated) f.ai.update(dt);
         autoDefense.update(dt);
+        conquest.update(dt);
 
         // focus-fire bookkeeping: how many units are shooting at each target
         for (int i = 0, n = units.size(); i < n; i++) units.get(i).targetedBy = 0;
@@ -120,11 +146,20 @@ public class World {
 
         for (int i = 0, n = units.size(); i < n; i++) {
             Unit u = units.get(i);
-            if (!u.dead) behavior.update(u, dt);
+            if (u.dead) continue;
+            u.dormant = conquest.dormant(u); // idle pirates in hexes nobody is near sleep
+            if (u.slowTimer > 0) u.slowTimer -= dt;
+            if (u.stunTimer > 0) { // Martyr Shockwave: frozen in place, weapons offline
+                u.stunTimer -= dt;
+                u.vx = u.vy = 0;
+                continue;
+            }
+            if (!u.dormant) behavior.update(u, dt);
         }
+        movement.tick();
         for (int i = 0, n = units.size(); i < n; i++) {
             Unit u = units.get(i);
-            if (!u.dead) movement.move(u, dt);
+            if (!u.dead && !u.dormant && u.stunTimer <= 0) movement.move(u, dt);
         }
 
         removeDead();
@@ -174,15 +209,22 @@ public class World {
             f.detectors.clear();
             f.auras.clear();
             f.colonies.clear();
+            f.docks.clear();
             if (f.vision != null) f.vision.beginFrame();
         }
         for (Unit u : units) {
             if (u.dead) continue;
             Faction f = u.owner;
-            if (f.vision != null) f.vision.reveal(u.x, u.y, u.vision() + (u.cls == ShipClass.COLONY ? u.radius : 0));
+            if (f.vision != null) {
+                float vis = u.vision() * (galaxy.hive ? systemAt(u.x, u.y).archetype.visionMult() : 1f); // nebulae are murky
+                f.vision.reveal(u.x, u.y, vis + (u.cls == ShipClass.COLONY ? u.radius : 0));
+            }
             if (u.s.detector) f.detectors.add(u);
             if (u.s.aura > 0) f.auras.add(u);
             if (u.cls == ShipClass.COLONY && u.home != null) f.colonies.add(u);
+            if (u.cls == ShipClass.COLONY || u.cls == ShipClass.MOTHERSHIP || u.cls == ShipClass.FACTORY || u.cls == ShipClass.SHIPYARD
+                    || u.cls == ShipClass.REFINERY)
+                f.docks.add(u);
         }
         for (Ping p : pings) if (p.owner.vision != null) p.owner.vision.reveal(p.x, p.y, p.r);
     }
@@ -190,7 +232,7 @@ public class World {
     public void computePopulation() {
         for (Faction f : factions) {
             f.popUsed = 0;
-            f.popCap = (f.mothership != null && !f.mothership.dead) ? 15 : 0;
+            f.popCap = (f.mothership != null && !f.mothership.dead) ? BASE_HOUSING : 0;
         }
         for (Unit u : units) {
             if (u.dead) continue;
@@ -206,15 +248,100 @@ public class World {
     // ------------------------------------------------------------------ spawning & death
 
     public Unit spawn(ShipClass c, Faction f, float x, float y) {
-        Unit u = new Unit(nextId++, c, f, clampPos(x), clampPos(y));
+        Unit u = new Unit(nextId++, c, f, clampX(x, y), clampY(x, y));
         pending.add(u);
         if (c == ShipClass.MOTHERSHIP) f.mothership = u;
         if (c == ShipClass.HUB) f.hub = u;
         return u;
     }
 
-    public static float clampPos(float v) {
-        return Math.max(40f, Math.min(SIZE - 40f, v));
+    /** (x, y) pulled inside the system it belongs to (40 from the edge). */
+    public float clampX(float x, float y) {
+        return galaxy.systemAt(x, y).clampX(x, y);
+    }
+
+    public float clampY(float x, float y) {
+        return galaxy.systemAt(x, y).clampY(x, y);
+    }
+
+    /** Metal a destroyed ship leaves behind as salvage: a quarter of its metal cost (fixed values for pirates and natives). */
+    public static float salvageValue(Unit u) {
+        switch (u.cls) {
+            case RAIDER: return 40;
+            case GUNSHIP: return 160;
+            case DREADNOUGHT: return 1200;
+            case GUARD: return 30;
+            case PIRATE_BASE: return u.tier >= 3 ? 4000 : 1500; // tier 3 = the Pirate Citadel
+            default:
+                if (u.cls.isBuilding() || u.s.harvester || u.cls == ShipClass.DRONE) return 0;
+                return u.s.metal / (float) u.s.squad * SALVAGE_SHARE;
+        }
+    }
+
+    /** The Ascension Gate is complete: the galaxy is won. Raids drop to a trickle; play can continue. */
+    public boolean ascended;
+
+    public void ascend(Faction f, Unit gate) {
+        ascended = true;
+        ring(gate.x, gate.y, 2400, GOOD, 2.5f);
+        announce("THE ASCENSION GATE IS COMPLETE! The pirate clans are broken - the galaxy is yours. (Keep playing if you like.)", GOOD);
+    }
+
+    /** Share of a destroyed ship's metal cost left in its wreck (metal is the limited resource). */
+    public static final float SALVAGE_SHARE = 0.5f;
+
+    /** Gives f a rare item; scarce finds are announced. */
+    public void grantRare(Faction f, spacerts.research.RareItem item, int n, float x, float y) {
+        if (n <= 0) return;
+        f.rare[item.ordinal()] += n;
+        f.found[item.ordinal()] = true;
+        if (f != player) return;
+        text(x, y + 22, "+" + n + " " + item.shortName, item.color);
+        if (item.scarce()) notify(f, "Rare find! +" + n + " " + item.title + ".", GOOD);
+    }
+
+    /** Martyr Shockwave: radius and stun duration. */
+    public static final float SHOCKWAVE_RADIUS = 1200f, SHOCKWAVE_STUN = 8f;
+
+    /** A fallen colony's last act: stuns every enemy ship (not structures) around it. */
+    public void shockwave(Faction f, float x, float y) {
+        int stunned = 0;
+        for (Unit e : units) {
+            if (e.dead || e.owner == f || e.s.stationary || e.dist(x, y) > SHOCKWAVE_RADIUS) continue;
+            e.stunTimer = SHOCKWAVE_STUN;
+            e.target = null;
+            stunned++;
+        }
+        Color c = new Color(0.55f, 0.8f, 1f, 1f);
+        ring(x, y, SHOCKWAVE_RADIUS, c, 1.6f);
+        ring(x, y, SHOCKWAVE_RADIUS * 0.6f, c, 1.1f);
+        blast(x, y, 260, c);
+        if (stunned > 0) notify(f, "Martyr Shockwave! " + stunned + " enemy ships stunned for " + (int) SHOCKWAVE_STUN + " s.", GOOD);
+    }
+
+    /** Leaves a salvageable wreck where u died, merging into a wreck already close by. */
+    private void spawnWreck(Unit u) {
+        float value = salvageValue(u);
+        if (value < 10) return;
+        // scarce loot riding in the wreck, collected by whoever salvages it
+        int neutron = u.cls == ShipClass.PIRATE_BASE ? (u.tier >= 3 ? 5 : 2) : 0;
+        int exotic = u.cls == ShipClass.DREADNOUGHT && rng.nextFloat() < 0.25f ? 1 : (u.cls == ShipClass.PIRATE_BASE && u.tier >= 3 ? 3 : 0);
+        for (Body b : bodies) {
+            if (b.dead || !b.isWreck() || Math.hypot(b.x - u.x, b.y - u.y) > 60) continue;
+            b.metal += value;
+            b.maxMetal += value;
+            b.life = Math.max(b.life, Body.WRECK_LIFE);
+            b.radius = Math.min(30f, b.radius + 2f);
+            b.lootNeutron += neutron;
+            b.lootExotic += exotic;
+            return;
+        }
+        Body b = new Body(Body.Kind.WRECK, clampX(u.x, u.y), clampY(u.x, u.y), Math.max(8f, Math.min(30f, 8f + value / 20f)));
+        b.metal = b.maxMetal = value;
+        b.life = Body.WRECK_LIFE;
+        b.lootNeutron = neutron;
+        b.lootExotic = exotic;
+        bodies.add(b);
     }
 
     private void handleDeath(Unit u) {
@@ -223,6 +350,7 @@ public class World {
             blast(u.x, u.y, size, u.owner.color);
             if (u.radius > 30) ring(u.x, u.y, size * 2f, new Color(1f, 0.8f, 0.5f, 1f), 0.9f);
         }
+        if (!u.silent) spawnWreck(u);
         Faction f = u.owner;
         if (u.buildCls != null) {
             if (!u.silent && f == player) notify(f, "Harvester lost - construction of " + u.buildCls.s.name + " refunded.", ALERT);
@@ -231,6 +359,9 @@ public class World {
         switch (u.cls) {
             case MOTHERSHIP:
                 eliminate(f);
+                break;
+            case PIRATE_BASE:
+                if (!u.silent) PirateBases.onBaseDestroyed(this, u);
                 break;
             case HUB:
                 if (f.hub == u) {
@@ -254,6 +385,19 @@ public class World {
                         if (!o.dead && o.home == p && o.owner == f && (o.cls == ShipClass.TURRET || o.cls == ShipClass.SHIPYARD))
                             o.kill(false);
                     if (!u.silent) notify(f, "Colony " + p.name + " has been destroyed!", ALERT);
+                    if (!u.silent && f.has(spacerts.research.Tech.MARTYR_SHOCKWAVE)) shockwave(f, u.x, u.y);
+                }
+                break;
+            case PATROL: // splits into skiffs that keep the patrol going
+                if (!u.silent) {
+                    int pieces = f.has(spacerts.research.Tech.SPLINTER_HULLS) ? 3 : 2;
+                    for (int i = 0; i < pieces; i++) {
+                        double a = Math.PI * 2 * i / pieces + u.angle;
+                        Unit s = spawn(ShipClass.PATROL_SKIFF, f, u.x + (float) Math.cos(a) * 18, u.y + (float) Math.sin(a) * 18);
+                        s.patrolStop = u.patrolStop;
+                        s.retreatOff = true; // skiffs fight to the end
+                        s.angle = (float) a;
+                    }
                 }
                 break;
             case OUTPOST:
@@ -307,7 +451,13 @@ public class World {
         p.colony = c;
         if (f.has(spacerts.research.Tech.PLANET_TURRETS)) spawnPlanetTurrets(p, f);
         ring(p.x, p.y, p.radius * 2.5f, f.color, 1.2f);
-        notify(f, "Colony established on " + p.name + " (+" + (int) p.housing(f) + " housing)", GOOD);
+        boolean settlers = f.isMajor();
+        if (settlers) { // every new colony comes with a harvester that starts working straight away
+            double a = rng.nextDouble() * Math.PI * 2;
+            Unit h = spawn(ShipClass.HARVESTER, f, p.x + (float) Math.cos(a) * (p.radius + 30), p.y + (float) Math.sin(a) * (p.radius + 30));
+            economy.autoAssign(h);
+        }
+        notify(f, "Colony established on " + p.name + " (+" + (int) p.housing(f) + " housing" + (settlers ? ", +1 harvester)" : ")"), GOOD);
     }
 
     public void spawnPlanetTurrets(Body p, Faction f) {
@@ -339,13 +489,30 @@ public class World {
         return false;
     }
 
+    /** Nearest colony, factory, shipyard or mothership of f within max (edge distance), or null. */
+    public Unit nearestRepairPoint(Faction f, float x, float y, float max) {
+        Unit best = null;
+        float bd = max;
+        for (Unit u : f.docks) {
+            if (u.dead) continue;
+            float d = u.dist(x, y) - u.radius;
+            if (d < bd) {
+                bd = d;
+                best = u;
+            }
+        }
+        return best;
+    }
+
     public Unit nearestDropoff(Faction f, float x, float y) {
         Unit best = null;
         float bd = Float.MAX_VALUE;
+        StarSystem here = galaxy.hive ? systemAt(x, y) : null;
         for (Unit u : units) {
             if (u.dead || u.owner != f) continue;
-            if (u.cls != ShipClass.MOTHERSHIP && u.cls != ShipClass.COLONY) continue;
+            if (u.cls != ShipClass.MOTHERSHIP && u.cls != ShipClass.COLONY && u.cls != ShipClass.REFINERY) continue;
             float d = u.dist(x, y);
+            if (here != null && systemAt(u.x, u.y) != here) d += 1e6f; // prefer a drop-off in the same system
             if (d < bd) {
                 bd = d;
                 best = u;

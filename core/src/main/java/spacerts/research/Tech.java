@@ -21,7 +21,13 @@ public enum Tech {
     LEVIATHAN_TECH("Leviathan Project", Branch.MILITARY, 1500, 1500, 120, 3, null, "Unlocks the Leviathan capital ship", cost(0, 0, 0, 6, 3)),
     NOVA_CANNON("Nova Cannon", Branch.MILITARY, 800, 600, 70, 3, "LEVIATHAN_TECH", "Leviathan ability (Q): massive AoE blast", cost(6, 0, 0, 0, 1)),
     FLEET_COMMAND("Capital Fleet Command", Branch.MILITARY, 2000, 2000, 120, 3, "LEVIATHAN_TECH", "Leviathan limit 1 -> 3", cost(0, 0, 0, 0, 5)),
+    NEUTRONIUM_PLATING("Neutronium Plating", Branch.MILITARY, 1500, 2000, 100, 3, "ARMOR_2", "+20% more hull HP (all ships)", cost(0, 0, 0, 0, 0, 0, 0, 4, 0)),
+    HYPERDRIVE("Hyperdrive Lattice", Branch.MILITARY, 1200, 1000, 90, 3, "ENGINES", "+10% ship speed; jump gates recharge instantly", cost(0, 0, 0, 0, 0, 2, 2, 0, 1)),
+    SPLINTER_HULLS("Splinter Hulls", Branch.MILITARY, 300, 250, 40, 1, null, "Patrol Ships split into 3 skiffs instead of 2 when destroyed", cost(0, 0, 1, 0, 0)),
+    EMERGENCY_THRUSTERS("Emergency Thrusters", Branch.MILITARY, 300, 300, 40, 1, null, "Auto-retreating ships move 60% faster", cost(0, 0, 2, 0, 0)),
+    JUMP_INHIBITORS("Jump Inhibitors", Branch.MILITARY, 600, 500, 60, 2, null, "Enemy ships arriving by gate in a hex you own are slowed 50% for 8 s", cost(0, 0, 0, 3, 0)),
     // ---- Economy
+    SALVAGE_DRONES("Salvage Drones", Branch.ECONOMY, 300, 200, 40, 1, null, "Wrecks are salvaged 50% faster and give +25% metal", cost(0, 0, 0, 0, 0)),
     HARVEST_1("Efficient Collectors I", Branch.ECONOMY, 200, 150, 30, 1, null, "+25% harvest rate", cost(0, 0, 0, 0, 0)),
     HARVEST_2("Efficient Collectors II", Branch.ECONOMY, 500, 400, 45, 2, "HARVEST_1", "+25% more harvest rate", cost(0, 0, 1, 0, 0)),
     CARGO("Expanded Holds", Branch.ECONOMY, 250, 250, 30, 1, null, "+50% harvester cargo", cost(0, 0, 0, 0, 0)),
@@ -30,10 +36,15 @@ public enum Tech {
     // ---- Colony
     HOUSING("Arcology Habitats", Branch.COLONY, 400, 400, 45, 1, null, "+50% housing on colonies", cost(0, 1, 0, 0, 0)),
     PLANET_TURRETS("Planetary Defense Grid", Branch.COLONY, 500, 600, 50, 2, null, "Every colony gets 2 defense turrets", cost(2, 0, 0, 0, 0)),
+    SNIPER_DEFLECTORS("Sniper Deflectors", Branch.COLONY, 400, 400, 45, 1, null, "Your colonies and their turrets take 35% less damage from snipers", cost(0, 2, 0, 0, 0)),
+    COUNTER_BATTERY("Counter-Battery Turrets", Branch.COLONY, 600, 700, 60, 2, null, "Planet turrets and Defense Platforms hit snipers out to 1100 - but only while the sniper is revealed by firing", cost(2, 0, 0, 1, 0)),
+    MARTYR_SHOCKWAVE("Martyr Shockwave", Branch.COLONY, 700, 600, 60, 2, null, "When one of your colonies falls, a shockwave stuns every enemy ship within 1200 for 8 s", cost(1, 1, 1, 1, 0)),
     // ---- Mothership
+    RAPID_REFIT("Rapid Refit Docks", Branch.MOTHERSHIP, 600, 600, 50, 2, null, "Base repair 2% -> 4% hull per second, starting 3 s after combat (was 6 s)", cost(0, 1, 1, 0, 0)),
     MS_ARMOR("Mothership Plating", Branch.MOTHERSHIP, 500, 700, 45, 1, null, "+40% mothership HP", cost(0, 2, 0, 0, 0)),
     MS_REPAIR("Self-Repair Nanites", Branch.MOTHERSHIP, 400, 400, 45, 1, null, "Mothership and structures slowly self-repair", cost(0, 0, 0, 1, 0)),
     RAPID_ASSEMBLY("Rapid Assembly", Branch.MOTHERSHIP, 500, 500, 45, 2, null, "+30% build speed everywhere", cost(0, 0, 2, 0, 0)),
+    DARK_REACTORS("Dark Matter Reactors", Branch.MOTHERSHIP, 1500, 1500, 100, 3, "RAPID_ASSEMBLY", "Another +30% build speed everywhere", cost(0, 0, 0, 0, 0, 4, 0, 0, 0)),
     // ---- Hub
     HUB_TIER_2("Hub Expansion II", Branch.HUB, 600, 600, 60, 1, null, "Research Hub tier 2", cost(1, 1, 1, 1, 0)),
     HUB_TIER_3("Hub Expansion III", Branch.HUB, 1200, 1200, 90, 2, "HUB_TIER_2", "Research Hub tier 3", cost(0, 0, 0, 0, 2));

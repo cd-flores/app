@@ -32,7 +32,7 @@ public class RivalAI {
             Tech.HOUSING, Tech.SHIELDS, Tech.ENGINES, Tech.DEEP_MINING, Tech.SURVEY_DRILLS, Tech.AEGIS_TECH,
             Tech.PHANTOM_TECH, Tech.WEAPONS_2, Tech.ARMOR_2, Tech.HARVEST_2, Tech.RAPID_ASSEMBLY, Tech.PLANET_TURRETS,
             Tech.MS_ARMOR, Tech.MS_REPAIR, Tech.HUB_TIER_3, Tech.LEVIATHAN_TECH, Tech.NOVA_CANNON, Tech.SENSORS,
-            Tech.FLEET_COMMAND};
+            Tech.FLEET_COMMAND, Tech.SNIPER_DEFLECTORS, Tech.EMERGENCY_THRUSTERS, Tech.RAPID_REFIT};
 
     // lists rebuilt every think
     private final List<Unit> harvesters = new ArrayList<>(), army = new ArrayList<>(), colonyShips = new ArrayList<>(),
@@ -67,7 +67,7 @@ public class RivalAI {
             else if (u.s.surveyor) surveyors.add(u);
             else if (u.cls == ShipClass.COLONY) colonies.add(u);
             else if (u.cls == ShipClass.OUTPOST) outposts.add(u);
-            else if (u.cls.isWarship()) army.add(u);
+            else if (u.cls.isWarship() && !u.retreating) army.add(u); // retreating ships repair before rejoining
             if (u.cls == ShipClass.FACTORY || u.cls == ShipClass.SHIPYARD) producers.add(u);
         }
     }
@@ -86,6 +86,15 @@ public class RivalAI {
         int target = Math.min(22, 6 + colonies.size() * 2 + (int) (w.time / 200f));
         if (harvesters.size() + pending(ShipClass.HARVESTER) < target && ms.queue.items.size() < 3)
             w.production.enqueue(ms, ShipClass.HARVESTER);
+        // a couple of Patrol Ships once the Mothership is tier II
+        if (ms.tier >= 2 && w.count(f, ShipClass.PATROL) + pending(ShipClass.PATROL) < 2 && ms.queue.items.size() < 3)
+            w.production.enqueue(ms, ShipClass.PATROL);
+        // Mining Barges once a factory is up: 1 + 1 per 3 colonies, at most 4
+        int barges = 0;
+        for (Unit h : harvesters) if (h.cls == ShipClass.BARGE) barges++;
+        Unit fac = leastBusy();
+        if (fac != null && fac.queue.items.size() < 2 && barges + pending(ShipClass.BARGE) < Math.min(4, 1 + colonies.size() / 3))
+            w.production.enqueue(fac, ShipClass.BARGE);
         for (Unit h : harvesters) if (h.order == Order.IDLE) w.economy.autoAssign(h);
     }
 
@@ -93,7 +102,7 @@ public class RivalAI {
         // colony ships
         Set<Body> claimed = new HashSet<>();
         for (Unit c : colonyShips) if (c.body != null) claimed.add(c.body);
-        boolean housingTight = f.popCap - f.popUsed < 8;
+        boolean housingTight = f.popCap - f.popUsed < 15;
         if ((housingTight || w.time > 120) && colonyShips.size() + pending(ShipClass.COLONY_SHIP) == 0 && colonies.size() < 14) {
             Unit fac = leastBusy();
             if (fac != null && nearestColonizable(ms, claimed) != null) w.production.enqueue(fac, ShipClass.COLONY_SHIP);
@@ -182,7 +191,7 @@ public class RivalAI {
         }
         if (w.time > 300 && f.canAfford(400, 400, NO_RARE) && w.construction.building(f, ShipClass.MENDER, null) == 0) {
             int menders = 0;
-            for (Unit u : army) if (u.cls == ShipClass.MENDER) menders++;
+            menders = w.count(f, ShipClass.MENDER);
             if (menders < army.size() / 10) build(ShipClass.MENDER, ms, null);
         }
     }
@@ -282,8 +291,14 @@ public class RivalAI {
         int wisps = 0;
         for (Unit u : army) if (u.cls == ShipClass.WISP) wisps++;
         if (wisps < 2) { w.production.enqueue(p, ShipClass.WISP); return; }
+        // upgrade a factory once the economy can carry it
+        if (w.time > 600 && f.energy > 1800 && f.metal > 1800) {
+            ShipClass up = p.tier == 1 ? ShipClass.FACTORY_TIER_2 : p.tier == 2 ? ShipClass.FACTORY_TIER_3 : null;
+            if (up != null && w.production.enqueue(p, up) == null) return;
+        }
+        if (p.tier >= 3 && w.production.enqueue(p, w.rng.nextBoolean() ? ShipClass.SOVEREIGN : ShipClass.HALCYON) == null) return;
         ShipClass[] pool = {ShipClass.LANCER, ShipClass.LANCER, ShipClass.LANCER, ShipClass.BULWARK, ShipClass.BULWARK,
-                ShipClass.LONGBOW, ShipClass.LONGBOW, ShipClass.HIVE, ShipClass.AEGIS, ShipClass.PHANTOM};
+                ShipClass.LONGBOW, ShipClass.LONGBOW, ShipClass.HIVE, ShipClass.AEGIS, ShipClass.PHANTOM, ShipClass.CORSAIR, ShipClass.TEMPEST};
         for (int tries = 0; tries < 4; tries++) {
             ShipClass c = pool[w.rng.nextInt(pool.length)];
             if (w.production.enqueue(p, c) == null) return;
@@ -293,7 +308,8 @@ public class RivalAI {
     private void command(Unit ms) {
         float power = armyPower();
         float threshold = (20 + w.time / 60f * 1.6f) * w.difficulty.assaultThreshold;
-        float rallyA = (float) Math.atan2(World.SIZE / 2 - ms.y, World.SIZE / 2 - ms.x);
+        spacerts.world.StarSystem home = w.systemAt(ms.x, ms.y);
+        float rallyA = (float) Math.atan2(home.cy - ms.y, home.cx - ms.x);
         float rx = ms.x + (float) Math.cos(rallyA) * 350, ry = ms.y + (float) Math.sin(rallyA) * 350;
 
         // defence takes priority when something of ours near home is hit

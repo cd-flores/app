@@ -14,7 +14,8 @@ import java.util.List;
  * never ones the player is actively commanding:
  * - idle warships respond to enemies near your bases, sending roughly 1.5x the threat's strength,
  * - harvesters run from raiders and resume afterwards,
- * - badly damaged ships pull back to the nearest Mender and return once repaired.
+ * - badly damaged ships pull back to the nearest Mender or base and return once repaired. This part runs for every
+ *   empire (rivals too) and ignores the G toggle; the player switches it off per ship with R.
  */
 public class AutoDefense {
     public static final float GUARD_RADIUS = 1400f, RESPONSE_RANGE = 2500f, FLEE_RADIUS = 450f;
@@ -31,10 +32,10 @@ public class AutoDefense {
         timer -= dt;
         if (timer > 0) return;
         timer = 1f;
+        retreats();
         Faction p = w.player;
         if (p.eliminated || !p.autoDefense) return;
         harvestersFlee(p);
-        retreat(p);
         defend(p);
         release(p);
     }
@@ -132,31 +133,64 @@ public class AutoDefense {
         }
     }
 
-    // ------------------------------------------------------------------ retreat to menders
+    // ------------------------------------------------------------------ retreat for repairs
 
-    private void retreat(Faction p) {
+    /**
+     * Warships of every empire that drop below Unit.RETREAT_AT pull back to the nearest Mender or base
+     * (colony, factory, mothership), repair there, then attack-move back to where they left the fight.
+     */
+    public void retreats() {
         for (Unit u : w.units) {
-            if (u.dead || u.owner != p || !u.cls.isWarship() || u.cls == ShipClass.MENDER) continue;
+            if (u.dead || !u.owner.isMajor() || !u.cls.isWarship() || u.cls == ShipClass.MENDER) continue;
+            float frac = u.hp / u.maxHp();
+            if (frac >= Unit.RETREAT_DONE) u.retreatOverridden = false;
             if (u.retreating) {
-                if (u.hp >= u.maxHp() * 0.9f || nearestMender(p, u, 3500) == null) { // healed, or the Mender is gone
-                    u.command(Order.MOVE, u.homeX, u.homeY);
+                if (frac >= Unit.RETREAT_DONE) {
                     u.clearAuto();
+                    u.command(Order.ATTACK_MOVE, u.homeX, u.homeY);
+                } else if (u.order == Order.IDLE && !repairing(u)) {
+                    // arrived but the Mender / base is gone: find another, or give up
+                    if (!sendToRepair(u)) u.clearAuto();
                 }
                 continue;
             }
-            if (u.hp >= u.maxHp() * 0.3f) continue;
-            if (u.order != Order.IDLE && !u.autoTask) continue; // the player is steering this one
-            Unit mender = nearestMender(p, u, 3000);
-            if (mender == null) continue;
+            if (u.retreatOff || u.retreatOverridden || frac >= Unit.RETREAT_AT) continue;
             if (!u.autoTask) {
-                u.homeX = u.anchorX;
-                u.homeY = u.anchorY;
+                boolean parked = u.order == Order.IDLE;
+                u.homeX = parked ? u.anchorX : u.x;
+                u.homeY = parked ? u.anchorY : u.y;
             }
-            float a = w.rng.nextFloat() * 6.283f, r = mender.s.healRange * 0.5f * w.rng.nextFloat();
-            u.command(Order.MOVE, mender.x + (float) Math.cos(a) * r, mender.y + (float) Math.sin(a) * r);
-            u.autoTask = false;
-            u.retreating = true;
+            if (sendToRepair(u)) {
+                u.autoTask = false;
+                u.retreating = true;
+                if (u.owner == w.player) w.text(u.x, u.y + 16, "retreating", RETREAT_C);
+            }
         }
+    }
+
+    private static final com.badlogic.gdx.graphics.Color RETREAT_C = new com.badlogic.gdx.graphics.Color(1f, 0.75f, 0.3f, 1f);
+
+    /** True while u sits inside a Mender's field or a base's repair range. */
+    private boolean repairing(Unit u) {
+        Unit m = nearestMender(u.owner, u, 3000);
+        if (m != null && m.dist(u) - u.radius < m.s.healRange) return true;
+        return w.nearestRepairPoint(u.owner, u.x, u.y, UnitBehavior.REPAIR_RANGE) != null;
+    }
+
+    /** Orders u to the nearest Mender or base. Returns false if there is nowhere to go. */
+    private boolean sendToRepair(Unit u) {
+        Unit mender = nearestMender(u.owner, u, 3000);
+        Unit dock = w.nearestRepairPoint(u.owner, u.x, u.y, 6000);
+        if (mender == null && dock == null) return false;
+        float a = w.rng.nextFloat() * 6.283f;
+        if (mender != null && (dock == null || mender.dist(u) < dock.dist(u))) {
+            float r = mender.s.healRange * 0.5f * w.rng.nextFloat();
+            u.command(Order.MOVE, mender.x + (float) Math.cos(a) * r, mender.y + (float) Math.sin(a) * r);
+        } else {
+            float r = dock.radius + 60 + w.rng.nextFloat() * 160;
+            u.command(Order.MOVE, dock.x + (float) Math.cos(a) * r, dock.y + (float) Math.sin(a) * r);
+        }
+        return true;
     }
 
     private Unit nearestMender(Faction p, Unit u, float max) {

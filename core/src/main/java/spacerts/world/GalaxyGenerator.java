@@ -20,8 +20,12 @@ public final class GalaxyGenerator {
     }
 
     public static void generate(World w) {
+        if (w.galaxy.hive) {
+            HiveGenerator.generate(w);
+            return;
+        }
         Random r = new Random(w.seed);
-        float S = World.SIZE;
+        float S = Galaxy.CLASSIC_SIZE;
         float[][] corners = {{1700, 1700}, {S - 1700, S - 1700}, {S - 1700, 1700}, {1700, S - 1700}};
         int first = r.nextInt(4);
         List<float[]> starts = new ArrayList<>();
@@ -63,31 +67,48 @@ public final class GalaxyGenerator {
             asteroidField(w, r, x, y, 4 + r.nextInt(5));
             fields++;
         }
+        // two giant asteroids out in the open (own random stream, so the rest of the map is unchanged)
+        Random gr = new Random(w.seed ^ 0x61A57L);
+        int giants = 0;
+        for (int i = 0; i < 400 && giants < 2; i++) {
+            float x = 1500 + gr.nextFloat() * (S - 3000), y = 1500 + gr.nextFloat() * (S - 3000);
+            if (tooClose(w, x, y, 700) || nearestStart(starts, majors, x, y) < 3000) continue;
+            giantAsteroid(w, gr, x, y);
+            giants++;
+        }
         for (Body b : w.bodies) if (b.kind == Body.Kind.ASTEROID) w.initialAsteroids++;
 
         // starting fleets
-        for (int i = 0; i < majors; i++) {
-            Faction f = w.factions.get(i);
-            float sx = starts.get(i)[0], sy = starts.get(i)[1];
-            f.energy = 700;
-            f.metal = 600;
-            w.spawn(ShipClass.MOTHERSHIP, f, sx, sy);
-            for (int h = 0; h < 4; h++)
-                w.spawn(ShipClass.HARVESTER, f, sx + 90 + h * 25, sy - 80);
-            Unit wisp = w.spawn(ShipClass.WISP, f, sx - 100, sy + 90);
-            wisp.anchorX = wisp.x;
-            wisp.anchorY = wisp.y;
-            for (int l = 0; l < 3; l++) w.spawn(ShipClass.LANCER, f, sx - 100 + l * 25, sy - 100);
-            if (f == w.player && w.difficulty.playerBonus) { // Easy: a head start
-                f.energy += 400;
-                f.metal += 400;
-                for (int l = 0; l < 3; l++) w.spawn(ShipClass.LANCER, f, sx - 100 + l * 25, sy - 130);
-            }
-        }
+        for (int i = 0; i < majors; i++) startingFleet(w, w.factions.get(i), starts.get(i)[0], starts.get(i)[1]);
+        finish(w);
+    }
+
+    /** Common end of generation: settle spawned units, index bodies, send harvesters out, first vision pass. */
+    static void finish(World w) {
         w.flushPending();
+        w.galaxy.indexBodies(w.bodies);
         for (Unit u : w.units) if (u.s.harvester) w.economy.autoAssign(u);
         w.computePopulation();
         w.updateVision();
+        w.conquest.recount();
+    }
+
+    /** Mothership, harvesters, a scout and a Lancer squad for faction f at (sx, sy). */
+    static void startingFleet(World w, Faction f, float sx, float sy) {
+        f.energy = 700;
+        f.metal = 600;
+        w.spawn(ShipClass.MOTHERSHIP, f, sx, sy);
+        for (int h = 0; h < 4; h++)
+            w.spawn(ShipClass.HARVESTER, f, sx + 90 + h * 25, sy - 80);
+        Unit wisp = w.spawn(ShipClass.WISP, f, sx - 100, sy + 90);
+        wisp.anchorX = wisp.x;
+        wisp.anchorY = wisp.y;
+        for (int l = 0; l < 3; l++) w.spawn(ShipClass.LANCER, f, sx - 100 + l * 25, sy - 100);
+        if (f == w.player && w.difficulty.playerBonus) { // Easy: a head start
+            f.energy += 400;
+            f.metal += 400;
+            for (int l = 0; l < 3; l++) w.spawn(ShipClass.LANCER, f, sx - 100 + l * 25, sy - 130);
+        }
     }
 
     private static float nearestStart(List<float[]> starts, int majors, float x, float y) {
@@ -96,8 +117,8 @@ public final class GalaxyGenerator {
         return best;
     }
 
-    private static void homeSystem(World w, Random r, float sx, float sy) {
-        float a = (float) Math.atan2(World.SIZE / 2 - sy, World.SIZE / 2 - sx);
+    static void homeSystem(World w, Random r, float sx, float sy) {
+        float a = (float) Math.atan2(w.systemAt(sx, sy).cy - sy, w.systemAt(sx, sy).cx - sx);
         addStar(w, r, sx + cos(a + 1.3f) * 700, sy + sin(a + 1.3f) * 700);
         asteroidField(w, r, sx + cos(a - 1.2f) * 750, sy + sin(a - 1.2f) * 750, 7);
         asteroidField(w, r, sx + cos(a + 2.6f) * 950, sy + sin(a + 2.6f) * 950, 4);
@@ -108,7 +129,7 @@ public final class GalaxyGenerator {
         addStar(w, r, sx + cos(a - 0.9f) * 2600, sy + sin(a - 0.9f) * 2600);
     }
 
-    private static void makeSystem(World w, Random r, float x, float y, float distStart) {
+    static void makeSystem(World w, Random r, float x, float y, float distStart) {
         boolean star = r.nextFloat() < 0.75f;
         if (star) addStar(w, r, x, y);
         int planets = 1 + r.nextInt(3);
@@ -116,7 +137,7 @@ public final class GalaxyGenerator {
             double ang = r.nextDouble() * Math.PI * 2;
             float d = star ? 400 + r.nextFloat() * 500 : i * 380f + r.nextFloat() * 200;
             float px = x + (float) Math.cos(ang) * d, py = y + (float) Math.sin(ang) * d;
-            if (px < 300 || py < 300 || px > World.SIZE - 300 || py > World.SIZE - 300) continue;
+            if (!w.systemAt(x, y).inside(px, py, 300)) continue;
             if (tooClose(w, px, py, 260)) continue;
             addPlanet(w, r, px, py, pickType(r, distStart), distStart);
         }
@@ -127,7 +148,7 @@ public final class GalaxyGenerator {
         }
     }
 
-    private static PlanetType pickType(Random r, float dist) {
+    static PlanetType pickType(Random r, float dist) {
         int[] weights = {18, 16, 13, 13, 12, 11, dist > 3500 ? 5 : 0};
         PlanetType[] types = {PlanetType.HABITABLE, PlanetType.DEFENDED, PlanetType.VOLCANIC, PlanetType.ICE, PlanetType.GAS, PlanetType.CRYSTAL, PlanetType.RUINS};
         int total = 0;
@@ -140,7 +161,7 @@ public final class GalaxyGenerator {
         return PlanetType.HABITABLE;
     }
 
-    private static boolean tooClose(World w, float x, float y, float d) {
+    static boolean tooClose(World w, float x, float y, float d) {
         for (Body b : w.bodies) if (Math.hypot(b.x - x, b.y - y) < d + b.radius) return true;
         return false;
     }
@@ -202,13 +223,31 @@ public final class GalaxyGenerator {
     public static void asteroidField(World w, Random r, float x, float y, int n) {
         for (int i = 0; i < n; i++) {
             float ax = x + (float) r.nextGaussian() * 170, ay = y + (float) r.nextGaussian() * 170;
-            Body b = new Body(Body.Kind.ASTEROID, World.clampPos(ax), World.clampPos(ay), 12 + r.nextFloat() * 14);
-            b.maxMetal = 500 + r.nextFloat() * 700;
+            Body b = new Body(Body.Kind.ASTEROID, w.clampX(ax, ay), w.clampY(ax, ay), 12 + r.nextFloat() * 14);
+            b.maxMetal = (500 + r.nextFloat() * 700) * ASTEROID_METAL_MULT;
             b.metal = b.maxMetal;
             float g = 0.45f + r.nextFloat() * 0.2f;
             b.color.set(g, g * 0.93f, g * 0.85f, 1f);
             w.bodies.add(b);
         }
+    }
+
+    /** Every asteroid holds 3x the metal it used to (1500-3600). */
+    public static final float ASTEROID_METAL_MULT = 3f;
+    /** Giant asteroids: huge, slow to drain, holding 1-5 million metal. */
+    public static final double GIANT_MIN = 1_000_000, GIANT_MAX = 5_000_000;
+
+    /** A giant asteroid holding millions of metal (a long-term prize to hold and mine for days). */
+    public static Body giantAsteroid(World w, Random r, float x, float y) {
+        Body b = new Body(Body.Kind.ASTEROID, w.clampX(x, y), w.clampY(x, y), 70 + r.nextFloat() * 40);
+        b.giant = true;
+        b.maxMetal = GIANT_MIN + r.nextDouble() * (GIANT_MAX - GIANT_MIN);
+        b.metal = b.maxMetal;
+        b.name = "Giant " + name(r);
+        float g = 0.5f + r.nextFloat() * 0.15f;
+        b.color.set(g * 1.05f, g * 0.95f, g * 0.8f, 1f);
+        w.bodies.add(b);
+        return b;
     }
 
     private static float cos(float a) { return (float) Math.cos(a); }

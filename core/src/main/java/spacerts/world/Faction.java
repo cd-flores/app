@@ -19,8 +19,11 @@ public class Faction {
     public final Color color;
     public final Kind kind;
 
-    public float energy, metal;
+    /** Stockpiles are doubles: endgame economies (giant asteroids, refinement) reach millions. */
+    public double energy, metal;
     public final int[] rare = new int[RareItem.COUNT];
+    /** Which rare items this faction has ever had (scarce finds appear in the top bar once found). */
+    public final boolean[] found = new boolean[RareItem.COUNT];
     public final EnumSet<Tech> techs = EnumSet.noneOf(Tech.class);
     public Tech researching;
     public float researchProgress;
@@ -28,7 +31,8 @@ public class Faction {
 
     public Unit mothership, hub;
     public int popUsed, popCap;
-    public final VisionGrid vision;
+    /** Fog of war, sized to the galaxy by World (major factions only). */
+    public VisionGrid vision;
     public RivalAI ai;
 
     /** Escalation bonuses (used by pirates). */
@@ -38,6 +42,8 @@ public class Faction {
     public final List<Unit> detectors = new ArrayList<>();
     public final List<Unit> auras = new ArrayList<>();
     public final List<Unit> colonies = new ArrayList<>();
+    /** Colonies, factories, shipyards and the mothership: where damaged ships go to repair (rebuilt each tick). */
+    public final List<Unit> docks = new ArrayList<>();
 
     /** Rally flag: where newly built warships gather. */
     public boolean hasFlag;
@@ -52,7 +58,6 @@ public class Faction {
         this.name = name;
         this.color = color;
         this.kind = kind;
-        this.vision = isMajor() ? new VisionGrid(World.SIZE, 250f) : null;
     }
 
     public boolean isMajor() { return kind == Kind.PLAYER || kind == Kind.RIVAL; }
@@ -80,19 +85,31 @@ public class Faction {
         } else if (!c.isBuilding()) {
             if (has(Tech.ARMOR_1)) m += 0.15f;
             if (has(Tech.ARMOR_2)) m += 0.15f;
+            if (has(Tech.NEUTRONIUM_PLATING)) m += 0.2f;
         }
         return m * (1f + extraHp);
     }
 
-    public float speedMult() { return has(Tech.ENGINES) ? 1.15f : 1f; }
+    public float speedMult() { return (has(Tech.ENGINES) ? 1.15f : 1f) * (has(Tech.HYPERDRIVE) ? 1.1f : 1f); }
     public float visionMult() { return has(Tech.SENSORS) ? 1.25f : 1f; }
     public float shieldRegenMult() { return has(Tech.SHIELDS) ? 2f : 1f; }
-    public float harvestMult() { return 1f + (has(Tech.HARVEST_1) ? 0.25f : 0) + (has(Tech.HARVEST_2) ? 0.25f : 0); }
+    public float harvestMult() {
+        return (1f + (has(Tech.HARVEST_1) ? 0.25f : 0) + (has(Tech.HARVEST_2) ? 0.25f : 0)) * refinementMult();
+    }
+
+    /** Stellar Refinement: the endgame stacking upgrade, +2% mining and energy per level (max 999). */
+    public static final int REFINEMENT_MAX = 999;
+    public static final float REFINEMENT_STEP = 0.02f;
+    public int refinement;
+
+    public float refinementMult() { return 1f + REFINEMENT_STEP * refinement; }
     public float cargoMult() { return has(Tech.CARGO) ? 1.5f : 1f; }
     public float metalMult() { return has(Tech.DEEP_MINING) ? 1.3f : 1f; }
-    public float buildMult() { return has(Tech.RAPID_ASSEMBLY) ? 1.3f : 1f; }
+    public float buildMult() { return (has(Tech.RAPID_ASSEMBLY) ? 1.3f : 1f) * (has(Tech.DARK_REACTORS) ? 1.3f : 1f); }
     public float housingMult() { return has(Tech.HOUSING) ? 1.5f : 1f; }
     public float outpostMult() { return has(Tech.SURVEY_DRILLS) ? 1.5f : 1f; }
+    /** Mothership upgrade tier (1-3); 0 without a mothership. */
+    public int msTier() { return mothership != null && !mothership.dead ? mothership.tier : 0; }
     public int leviathanCap() { return has(Tech.FLEET_COMMAND) ? 3 : 1; }
 
     // ---- resources

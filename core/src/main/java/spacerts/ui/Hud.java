@@ -15,13 +15,16 @@ import spacerts.research.Tech;
 import spacerts.screens.GameScreen;
 import spacerts.systems.EconomySystem;
 import spacerts.systems.ProductionSystem;
+import spacerts.systems.UnitBehavior;
 import spacerts.units.Ability;
 import spacerts.units.ShipClass;
 import spacerts.units.Spec;
 import spacerts.units.Unit;
 import spacerts.world.Body;
 import spacerts.world.Faction;
+import spacerts.world.Galaxy;
 import spacerts.world.Message;
+import spacerts.world.StarSystem;
 import spacerts.world.VisionGrid;
 import spacerts.world.World;
 
@@ -115,8 +118,10 @@ public class Hud {
         float w = Gdx.graphics.getWidth(), h = Gdx.graphics.getHeight();
         float y = h - syDown;
         float x0 = w - MINI - 8, y0 = 7;
-        float wx = (sx - x0) / MINI * World.SIZE, wy = (y - y0) / MINI * World.SIZE;
-        return new float[]{Math.max(0, Math.min(World.SIZE, wx)), Math.max(0, Math.min(World.SIZE, wy))};
+        miniFrame(gs.world);
+        float wx = miniOx + (sx - x0) / miniScale, wy = miniOy + (y - y0) / miniScale;
+        StarSystem cs = gs.world.systemAt(gs.cam.position.x, gs.cam.position.y);
+        return new float[]{cs.clampX(wx, wy), cs.clampY(wx, wy)};
     }
 
     private Txt txt(float x, float y, String s, Color c, float scale) {
@@ -212,6 +217,7 @@ public class Hud {
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
 
         sr.begin(ShapeRenderer.ShapeType.Filled);
+        if (gs.showGalaxy && w.galaxy.hive) galaxyMap(sr, w);
         topBar(sr, w, p);
         bottomPanel(sr, w, p);
         minimap(sr, w);
@@ -219,11 +225,12 @@ public class Hud {
         sr.end();
         flushTexts();
 
-        if (gs.showHelp || gs.menuOpen || w.gameOver) {
+        if (gs.showHelp || gs.menuOpen || w.gameOver || victoryShowing()) {
             buttons.clear();
             sr.begin(ShapeRenderer.ShapeType.Filled);
             if (gs.showHelp) help(sr);
             else if (w.gameOver) gameOver(sr, w);
+            else if (victoryShowing() && !gs.menuOpen) victory(sr, w);
             else pauseMenu(sr);
             sr.end();
             flushTexts();
@@ -242,7 +249,9 @@ public class Hud {
         x = stat(x, y, "Metal " + (int) p.metal, METAL_C);
         x = stat(x, y, "Housing " + p.popUsed + "/" + p.popCap, p.popUsed >= p.popCap ? World.ALERT : Color.WHITE);
         x += 12;
-        for (RareItem r : RareItem.values()) x = stat(x, y, r.shortName + " " + p.rare[r.ordinal()], r.color);
+        for (RareItem r : RareItem.values())
+            if (!r.scarce() || p.found[r.ordinal()] || p.rare[r.ordinal()] > 0) // scarce finds appear once found
+                x = stat(x, y, r.shortName + " " + p.rare[r.ordinal()], r.color);
 
         // auto-defense toggle (also G)
         String ad = "Auto-defend " + (p.autoDefense ? "ON" : "OFF") + " (G)";
@@ -254,13 +263,17 @@ public class Hud {
         txt(bx + 7, y, ad, Color.WHITE, 0.85f);
         buttons.add(new Btn(bx, by, bw, bh, () -> p.autoDefense = !p.autoDefense));
         if (hov) tooltip = "Auto-defense: idle warships attack enemies near your bases (about 1.5x their strength),\n"
-                + "harvesters flee from raids, badly damaged ships retreat to a Mender, and your ships focus fire.\n"
+                + "harvesters flee from raids, and your ships focus fire. (Auto-retreat is separate: R on selected warships.)\n"
                 + "Ships you are giving orders to are never overridden.";
 
         float toRaid = Math.max(0, w.threats.nextWave - w.time);
-        String right = w.difficulty.title + "     Time " + clock(w.time) + "     Pirate raid ~" + clock(toRaid) + "     Speed x" + gs.speed
-                + (gs.paused ? "     PAUSED" : "") + "     F Rally flag" + (p.hasFlag ? " (set)" : "") + "     F1 Help";
-        aligned(W - 712, y, 700, right, toRaid < 45 ? World.ALERT : DIM, 1f, Align.right);
+        String bases = w.piratesOnly() ? "     Conquered " + spacerts.systems.ConquestSystem.ownedCount(w) + "/" + w.galaxy.systems.size()
+                + "     Pirate bases: " + spacerts.world.PirateBases.livingBases(w).size() + (w.ascended ? "     ASCENDED" : "") : "";
+        StarSystem here = w.systemAt(gs.cam.position.x, gs.cam.position.y);
+        String where = w.galaxy.hive ? here.name + " (" + here.archetype.title + ")     " : "";
+        String right = where + w.difficulty.title + bases + "     Time " + clock(w.time) + "     Pirate raid ~" + clock(toRaid) + "     Speed x" + gs.speed
+                + (gs.paused ? "     PAUSED" : "") + (w.galaxy.hive ? "     Tab Galaxy map" : "     F Rally flag" + (p.hasFlag ? " (set)" : "")) + "     F1 Help";
+        aligned(W - 1012, y, 1000, right, toRaid < 45 ? World.ALERT : DIM, 1f, Align.right);
     }
 
     private float stat(float x, float y, String s, Color c) {
@@ -286,15 +299,77 @@ public class Hud {
             if (prod.cls == ShipClass.HUB) researchPanel(sr, w, p);
         } else if (builder != null) {
             constructPanel(sr, w, p, builder, x0, x1);
+        } else if (gs.input.selectedColony() != null) {
+            colonyPanel(sr, w, p, gs.input.selectedColony(), x0, x1);
         } else {
             float y = BOTTOM - 14;
             txt(x0, y, "Commands", TITLE, 1f);
+            retreatToggle(sr, w, p, x0 + width("Commands", 1f) + 20, y);
             String hint = "Left-click / drag: select     Right-click: move, attack, harvest, colonize, survey     Ctrl+Right-click: attack-move\n"
                     + "H: Mothership (harvesters)   F2: Ship Factories (warships)   B: Research Hub   I: idle harvesters   Ctrl+A: all warships\n"
-                    + "F: place rally flag (Shift+F removes)   Q: ability   X: stop   C: center on selection   Double-click: select all of a type\n"
-                    + "Select a Harvester to build Factories, the Hub, planet defenses and Menders.   Space: pause   [ ]: speed   F5 / F9: save / load";
+                    + "F: place rally flag (Shift+F removes)   Q: ability   R: auto-retreat on/off   X: stop   C: center   Double-click: select all of a type\n"
+                    + "Select a Harvester to build Factories, the Hub and Menders. Click a colony to upgrade it.   Space: pause   [ ]: speed   F5 / F9: save / load";
             wrap(x0, y - 26, x1 - x0, hint, DIM, 0.85f);
         }
+    }
+
+    /** "Auto-retreat ON/OFF (R)" button for the selected warships; draws nothing when none are selected. */
+    private void retreatToggle(ShapeRenderer sr, World w, Faction p, float bx, float y) {
+        int ships = 0, off = 0, retreating = 0;
+        for (Unit u : gs.input.selected)
+            if (!u.dead && u.owner == p && u.cls.isWarship()) {
+                ships++;
+                if (u.retreatOff) off++;
+                if (u.retreating) retreating++;
+            }
+        if (ships == 0) return;
+        boolean on = off == 0;
+        String label = "Auto-retreat " + (on ? "ON" : off == ships ? "OFF" : "MIXED") + " (R)" + (retreating > 0 ? "  - " + retreating + " repairing" : "");
+        float bw = width(label, 0.85f) + 14, bh = 20, by = y - 16;
+        boolean hov = hovered(bx, by, bw, bh);
+        if (on) sr.setColor(hov ? 0.15f : 0.1f, hov ? 0.4f : 0.3f, hov ? 0.22f : 0.16f, 1f);
+        else sr.setColor(hov ? 0.4f : 0.3f, hov ? 0.15f : 0.1f, hov ? 0.15f : 0.1f, 1f);
+        sr.rect(bx, by, bw, bh);
+        txt(bx + 7, y, label, Color.WHITE, 0.85f);
+        buttons.add(new Btn(bx, by, bw, bh, gs.input::toggleRetreat));
+        if (hov) tooltip = "Auto-retreat: below " + (int) (Unit.RETREAT_AT * 100) + "% hull a warship pulls back to the nearest Mender or base\n"
+                + "(colony, factory, Mothership), repairs to " + (int) (Unit.RETREAT_DONE * 100) + "%, then attack-moves back into the fight.\n"
+                + "Any ship parked near your bases and out of combat for " + (int) UnitBehavior.REPAIR_DELAY + " s repairs "
+                + (int) (UnitBehavior.REPAIR_RATE * 100) + "% of its hull per second.";
+    }
+
+    /** Turret / Shield upgrade buttons for the selected colony; the nearest free harvester goes and builds it. */
+    private void colonyPanel(ShapeRenderer sr, World w, Faction p, Body b, float x0, float x1) {
+        float top = BOTTOM - 12;
+        int used = w.construction.pointsUsed(p, b);
+        txt(x0, top, "Upgrade " + b.name + "  (" + used + "/" + Body.MAX_DEFENSE + " points used)", TITLE, 1f);
+        Unit builder = w.construction.nearestFreeBuilder(p, b);
+        float gap = 6, bh = 42, bw = Math.min(220, (x1 - x0 - gap) / 2);
+        for (int i = 0; i < GameInput.PLANET_UPGRADES.length; i++) {
+            ShipClass c = GameInput.PLANET_UPGRADES[i];
+            float bx = x0 + i * (bw + gap), by = top - 28 - bh;
+            String block = w.construction.baseBlocker(p, c);
+            if (block == null && used >= Body.MAX_DEFENSE) block = b.name + " has used all " + Body.MAX_DEFENSE + " upgrade points";
+            if (block == null && builder == null) block = "No free harvester to build it";
+            String miss = p.missing(c.s.energy, c.s.metal, c.s.rare);
+            boolean ok = block == null && miss == null;
+            boolean hov = hovered(bx, by, bw, bh);
+            if (ok) sr.setColor(hov ? 0.14f : 0.08f, hov ? 0.26f : 0.16f, hov ? 0.42f : 0.28f, 1f);
+            else sr.setColor(hov ? 0.14f : 0.08f, hov ? 0.12f : 0.08f, hov ? 0.14f : 0.1f, 1f);
+            sr.rect(bx, by, bw, bh);
+            String label = "[" + GameInput.BUILD_KEY_NAMES[i] + "] " + c.s.name;
+            txt(bx + 6, by + bh - 7, label, ok ? Color.WHITE : GRAY, fit(label, 0.85f, bw - 10));
+            String cost = ProductionSystem.costText(c.s.energy, c.s.metal, c.s.rare) + "  " + (int) c.s.buildTime + "s";
+            txt(bx + 6, by + 16, cost, ok ? new Color(0.85f, 0.85f, 0.6f, 1f) : new Color(0.65f, 0.45f, 0.45f, 1f), fit(cost, 0.72f, bw - 10));
+            final ShipClass fc = c;
+            buttons.add(new Btn(bx, by, bw, bh, () -> gs.input.upgradePlanet(b, fc)));
+            if (hov) tooltip = shipTooltip(c, block != null ? block : miss);
+        }
+        wrap(x0, top - 28 - bh - 12, x1 - x0,
+                "The nearest free Harvester flies over and builds the upgrade, then goes back to harvesting.  Each colony has "
+                        + Body.MAX_DEFENSE + " upgrade points to split between turrets and shield."
+                        + (builder != null ? "  Builder: Harvester " + (int) builder.dist(b.x, b.y) + " away." : ""),
+                DIM, 0.78f);
     }
 
     private void infoPanel(ShapeRenderer sr, World w, Faction p, float x, float y, float width) {
@@ -323,8 +398,10 @@ public class Hud {
     }
 
     private void unitInfo(ShapeRenderer sr, World w, Unit u, float x, float y, float width) {
-        txt(x, y, u.s.name, u.owner.color, 1.1f);
-        if (u.owner != w.player) txt(x + width(u.s.name, 1.1f) + 10, y, "(" + u.owner.name + ")", DIM, 0.85f);
+        String title = u.s.name + (u.cls == ShipClass.MOTHERSHIP || u.cls == ShipClass.FACTORY ? "  Tier " + ProductionSystem.roman(u.tier) : "")
+                + (u.cls == ShipClass.PIRATE_BASE && u.tier >= 3 ? " - CITADEL" : "");
+        txt(x, y, title, u.owner.color, 1.1f);
+        if (u.owner != w.player) txt(x + width(title, 1.1f) + 10, y, "(" + u.owner.name + ")", DIM, 0.85f);
         float yy = y - 24;
         float pct = Math.max(0, u.hp / u.maxHp());
         sr.setColor(0.2f, 0.05f, 0.05f, 1f);
@@ -356,7 +433,7 @@ public class Hud {
                     sb.append(String.format("Produces +%.1f energy/s, +%.1f metal/s\n", inc, inc));
                     sb.append("Upgrades ").append(u.home.defensePoints()).append("/").append(Body.MAX_DEFENSE)
                             .append(": turrets ").append(u.home.turretPoints).append(", shield ").append(u.home.shieldPoints);
-                    if (u.owner == w.player && u.home.defensePoints() < Body.MAX_DEFENSE) sb.append(" (build with a Harvester)");
+                    if (u.owner == w.player && u.home.defensePoints() < Body.MAX_DEFENSE) sb.append(" (keys 1 / 2)");
                     sb.append("\n");
                 }
                 break;
@@ -367,7 +444,7 @@ public class Hud {
                 break;
             case MINER: {
                 Body rock = u.body != null && !u.body.dead ? u.body : null;
-                if (rock == null) sb.append("Depleted - no asteroids left within reach\n");
+                if (rock == null) sb.append(u.relocating ? "Relocating to the next asteroid field...\n" : "Depleted - no asteroids left in this system\n");
                 else {
                     sb.append(String.format("Mining +%.1f metal/s", w.economy.minerRate(u)));
                     if (rock.kind == Body.Kind.ASTEROID) sb.append(" (asteroid: ").append((int) rock.metal).append(" left)");
@@ -403,6 +480,8 @@ public class Hud {
     }
 
     private String status(World w, Unit u) {
+        if (u.warping) return "Warping";
+        if (u.warpCharge > 0) return "Spooling warp drive...";
         switch (u.order) {
             case HARVEST:
                 if (u.body == null) return "Harvesting";
@@ -431,7 +510,18 @@ public class Hud {
                 sb.append("Star - infinite ENERGY source.\nRight-click with harvesters selected to collect energy.");
                 break;
             case ASTEROID:
-                sb.append("Asteroid - METAL: ").append((int) b.metal).append(" remaining.\nRight-click with harvesters to mine.");
+                sb.append(b.giant ? "GIANT ASTEROID - METAL: " : "Asteroid - METAL: ").append(String.format("%,d", (long) b.metal)).append(" remaining.\nRight-click with harvesters to mine")
+                        .append(b.giant ? ", or park an Asteroid Miner beside it: it will take days to drain." : ".");
+                break;
+            case GATE: {
+                StarSystem to = b.link != null ? b.link.system : null;
+                sb.append("Jump gate").append(to != null ? " to " + to.name + " (" + to.archetype.title + ")" : "").append(".\n")
+                        .append("Right-click it with ships selected to jump through. Double-click it to look through it.");
+                break;
+            }
+            case WRECK:
+                sb.append("Wreckage - SALVAGE: ").append((int) b.metal).append(" metal.\nDrifts away in ").append((int) b.life)
+                        .append("s. Right-click with harvesters or Mining Barges to salvage.");
                 break;
             default:
                 sb.append(b.type.title).append("\n");
@@ -484,7 +574,8 @@ public class Hud {
             float by = top - 28 - (row + 1) * (bh + gap) + gap;
             if (by < 2) break;
             String block = w.production.blocker(prod, c);
-            String miss = p.missing(c.s.energy, c.s.metal, c.s.rare);
+            int ce = w.production.energyCost(p, c), cm = w.production.metalCost(p, c); // warships scale with copies owned
+            String miss = p.missing(ce, cm, c.s.rare);
             boolean locked = c.s.tech != null && !p.has(c.s.tech);
             boolean ok = block == null && miss == null;
             boolean hov = hovered(bx, by, bw, bh);
@@ -496,18 +587,34 @@ public class Hud {
                 sr.rect(bx, by + bh - 2, bw, 2);
             }
             String key = i < GameInput.BUILD_KEY_NAMES.length ? "[" + GameInput.BUILD_KEY_NAMES[i] + "] " : "";
-            txt(bx + 6, by + bh - 7, key + c.s.name + (c.s.squad > 1 ? " x" + c.s.squad : "") + (locked ? "  (locked)" : ""),
-                    ok ? Color.WHITE : GRAY, 0.85f);
-            String cost = ProductionSystem.costText(c.s.energy, c.s.metal, c.s.rare);
+            String label = key + c.s.name + (c.s.squad > 1 ? " x" + c.s.squad : "") + (locked ? "  (locked)" : "")
+                    + (c == ShipClass.STELLAR_REFINEMENT ? "  Lv " + p.refinement : "");
+            txt(bx + 6, by + bh - 7, label, ok ? Color.WHITE : GRAY, fit(label, 0.85f, bw - 10));
+            String cost = ProductionSystem.costText(ce, cm, c.s.rare);
             int pop = c.s.pop * c.s.squad;
             if (pop > 0) cost += "  " + pop + "H";
-            txt(bx + 6, by + 16, cost, ok ? new Color(0.85f, 0.85f, 0.6f, 1f) : new Color(0.65f, 0.45f, 0.45f, 1f), fit(cost, 0.72f, bw - 10));
+            boolean pricier = ce > c.s.energy || cm > c.s.metal;
+            txt(bx + 6, by + 16, cost, ok ? (pricier ? new Color(1f, 0.75f, 0.45f, 1f) : new Color(0.85f, 0.85f, 0.6f, 1f)) : new Color(0.65f, 0.45f, 0.45f, 1f), fit(cost, 0.72f, bw - 10));
             final ShipClass fc = c;
             buttons.add(new Btn(bx, by, bw, bh, () -> {
                 String err = w.production.enqueue(prod, fc);
                 if (err != null) w.notify(p, err, World.ALERT);
             }));
-            if (hov) tooltip = shipTooltip(c, block != null ? block : miss);
+            if (hov) {
+                tooltip = shipTooltip(c, block != null ? block : miss);
+                if (c == ShipClass.STELLAR_REFINEMENT) {
+                    tooltip += "\n\nLevel " + p.refinement + " / " + spacerts.world.Faction.REFINEMENT_MAX + ": mining and energy +"
+                            + Math.round(spacerts.world.Faction.REFINEMENT_STEP * 100 * p.refinement) + "% now, +"
+                            + Math.round(spacerts.world.Faction.REFINEMENT_STEP * 100 * (p.refinement + 1)) + "% after the next level.\n"
+                            + "Next level costs " + ProductionSystem.costText(ce, cm, c.s.rare)
+                            + "  (base 2000E / 2000M x (1 + ln(1 + level)): level 10 = 3.4x, 100 = 5.6x, 999 = 7.9x).";
+                } else if (pricier) {
+                    int n = w.production.copies(p, c);
+                    tooltip += "\n\nPrice now " + ProductionSystem.costText(ce, cm, c.s.rare) + "  (base " + c.s.energy + "E / " + c.s.metal + "M, +"
+                            + Math.round((w.production.priceMult(p, c) - 1f) * 100) + "% for " + n + " already in service).\n"
+                            + "Warships cost base x (1 + " + ProductionSystem.PRICE_K + " x ln(1 + copies)): variety is cheaper.";
+                }
+            }
         }
     }
 
@@ -551,10 +658,9 @@ public class Hud {
             if (hov) tooltip = shipTooltip(c, block != null ? block : miss);
         }
         wrap(x0, top - 28 - bh - 12, x1 - x0,
-                "Factory / Hub: click open space.  Turret / Shield Upgrade: click one of your colonies - each colony has "
-                        + Body.MAX_DEFENSE + " upgrade points to split between turrets and shield.  Mender: built where the harvester is.  "
+                "Factory / Hub: click open space.  Mender: built where the harvester is.  "
                         + "Solar Collector: click a star.  Asteroid Miner: click an asteroid or metal planet.  "
-                        + "Hold Shift to place several with more selected harvesters.",
+                        + "Hold Shift to place several with more selected harvesters.  Planet upgrades: click the colony itself.",
                 DIM, 0.78f);
     }
 
@@ -564,17 +670,18 @@ public class Hud {
         if (c.isPlanetUpgrade()) {
             sb.append(s.name).append("\n").append(s.desc).append("\n");
             if (c == ShipClass.DEF_TURRET)
-                sb.append("Each turret: ").append((int) ShipClass.TURRET.s.hp).append(" HP, range ").append((int) ShipClass.TURRET.s.range).append(".\n");
+                sb.append("Each turret: ").append((int) (ShipClass.TURRET.s.hp * Unit.DURABILITY)).append(" HP, range ").append((int) ShipClass.TURRET.s.range).append(".\n");
             else
-                sb.append("Colony shield +").append((int) Body.SHIELD_PER_POINT).append(", recharge +").append((int) Body.REGEN_PER_POINT).append("/s per point.\n");
+                sb.append("Colony shield +").append((int) (Body.SHIELD_PER_POINT * Unit.DURABILITY * Unit.COLONY_SHIELD_MULT)).append(", recharge +")
+                        .append((int) (Body.REGEN_PER_POINT * Unit.DURABILITY * Unit.SHIELD_REGEN_MULT * Unit.COLONY_SHIELD_MULT)).append("/s per point.\n");
             sb.append("A colony has ").append(Body.MAX_DEFENSE).append(" upgrade points in total - split them between turrets and shield.\n")
                     .append("Build ").append((int) s.buildTime).append("s   Cost: ").append(ProductionSystem.costText(s.energy, s.metal, s.rare));
             if (problem != null) sb.append("\n\n> ").append(problem);
             return sb.toString();
         }
         sb.append(s.name).append(s.squad > 1 ? " (squad of " + s.squad + ")" : "").append("\n").append(s.desc).append("\n\n");
-        sb.append("HP ").append((int) s.hp);
-        if (s.shield > 0) sb.append("   Shield ").append((int) s.shield);
+        sb.append("HP ").append((int) (s.hp * Unit.DURABILITY));
+        if (s.shield > 0) sb.append("   Shield ").append((int) (s.shield * Unit.DURABILITY));
         if (s.armor > 0) sb.append("   Armor ").append((int) (s.armor * 100)).append("%");
         sb.append("\n");
         if (s.damage > 0) {
@@ -590,7 +697,7 @@ public class Hud {
         if (c == ShipClass.MINER) sb.append("Mines ").append((int) spacerts.systems.ConstructionSystem.MINER_RATE)
                 .append(" metal/s from asteroids within ").append((int) spacerts.systems.ConstructionSystem.MINER_REACH)
                 .append(" (").append((int) spacerts.systems.ConstructionSystem.MINER_PLANET_RATE).append("/s forever on a metal planet). One per field.\n");
-        if (s.healRate > 0) sb.append("Repairs every ally within ").append((int) s.healRange).append(" by ").append((int) s.healRate).append(" HP/s\n");
+        if (s.healRate > 0) sb.append("Repairs every ally within ").append((int) s.healRange).append(" by ").append((int) (s.healRate * Unit.DURABILITY)).append(" HP/s\n");
         if (s.speed > 0) sb.append("Speed ").append((int) s.speed).append("   ");
         sb.append("Vision ").append((int) s.vision).append("   Build ").append((int) s.buildTime).append("s\n");
         sb.append("Cost: ").append(ProductionSystem.costText(s.energy, s.metal, s.rare));
@@ -666,31 +773,187 @@ public class Hud {
         }
     }
 
+    // ------------------------------------------------------------------ galaxy map (Tab, Hive only)
+
+    private float gmOx, gmOy, gmScale;
+
+    private void galaxyFrame(World w) {
+        float areaW = W - 40, areaH = H - TOP - BOTTOM - 30;
+        gmScale = Math.min(areaW / w.galaxy.width, areaH / w.galaxy.height);
+        gmOx = (W - w.galaxy.width * gmScale) / 2;
+        gmOy = BOTTOM + 15 + (areaH - w.galaxy.height * gmScale) / 2;
+    }
+
+    /** True once the player has seen any part of the system. */
+    private static boolean explored(World w, StarSystem s) {
+        VisionGrid vg = w.player.vision;
+        if (vg.isExplored(s.cx, s.cy)) return true;
+        for (int k = 0; k < 6; k++)
+            if (vg.isExplored(s.cx + (s.cornerX(k) - s.cx) * 0.55f, s.cy + (s.cornerY(k) - s.cy) * 0.55f)) return true;
+        for (Body g : s.gates) if (g != null && vg.isExplored(g.x, g.y)) return true;
+        return false;
+    }
+
+    /** The system under a screen point on the galaxy map, or null. */
+    public StarSystem galaxyPick(float sx, float syDown) {
+        World w = gs.world;
+        if (!w.galaxy.hive) return null;
+        galaxyFrame(w);
+        float y = Gdx.graphics.getHeight() - syDown;
+        float wx = (sx - gmOx) / gmScale, wy = (y - gmOy) / gmScale;
+        StarSystem s = w.systemAt(wx, wy);
+        return s.dist(wx, wy) < s.radius * 1.1f ? s : null;
+    }
+
+    private static Color dangerColor(int d) {
+        float t = Math.min(1f, d / 10f);
+        return new Color(0.5f + 0.5f * t, 0.9f - 0.6f * t, 0.5f - 0.3f * t, 0.9f);
+    }
+
+    private static String controlText(StarSystem s) {
+        switch (s.control) {
+            case OWNED: return "yours";
+            case CONTESTED: return "yours - CONTESTED";
+            case PIRATE: return "pirate stronghold";
+            default: return "unclaimed";
+        }
+    }
+
+    private void galaxyMap(ShapeRenderer sr, World w) {
+        galaxyFrame(w);
+        int n = w.galaxy.systems.size();
+        int[] mine = new int[n], foes = new int[n], cols = new int[n];
+        boolean[] base = new boolean[n];
+        for (Unit u : w.units) {
+            if (u.dead || u.cls == ShipClass.DRONE) continue;
+            int id = w.systemAt(u.x, u.y).id;
+            if (u.owner == w.player) {
+                if (u.cls == ShipClass.COLONY) cols[id]++;
+                else if (!u.s.internal) mine[id]++;
+            } else if (u.cls == ShipClass.PIRATE_BASE) base[id] = true;
+            else if (u.owner == w.pirates && w.canSee(w.player, u)) foes[id]++;
+        }
+        StarSystem here = w.systemAt(gs.cam.position.x, gs.cam.position.y);
+        StarSystem alert = w.time - w.alertTime < 10 ? w.systemAt(w.alertX, w.alertY) : null;
+        StarSystem hover = galaxyPick(mx, H - my);
+        sr.setColor(0, 0, 0.02f, 0.35f);
+        sr.rect(0, BOTTOM, W, H - TOP - BOTTOM);
+        float rr = Galaxy.HEX_R * gmScale;
+        for (StarSystem s : w.galaxy.systems) {
+            float cx = gmOx + s.cx * gmScale, cy = gmOy + s.cy * gmScale;
+            boolean seen = explored(w, s);
+            // links to neighbours (gate lanes)
+            if (seen) for (int k = 0; k < 6; k++) {
+                StarSystem nb = s.neighbours[k];
+                if (nb == null || nb.id < s.id) continue;
+                sr.setColor(0.35f, 0.7f, 1f, 0.18f);
+                sr.rectLine(cx, cy, gmOx + nb.cx * gmScale, gmOy + nb.cy * gmScale, 1.5f);
+            }
+            // fill
+            float fr, fg, fb, fa;
+            // conquest colours: grey = nobody's, blue = yours, orange pulse = contested, red = pirate stronghold
+            boolean flash = ((int) (w.time * 3)) % 2 == 0;
+            if (s.control == StarSystem.Control.CONTESTED) { fr = 1f; fg = 0.6f; fb = 0.2f; fa = flash ? 0.45f : 0.25f; }
+            else if (s.owned()) { fr = w.player.color.r; fg = w.player.color.g; fb = w.player.color.b; fa = 0.42f; }
+            else if (!seen) { fr = 0.1f; fg = 0.12f; fb = 0.18f; fa = 0.25f; }
+            else if (base[s.id]) { fr = 1f; fg = 0.25f; fb = 0.2f; fa = 0.35f; }
+            else if (cols[s.id] > 0) { fr = w.player.color.r; fg = w.player.color.g; fb = w.player.color.b; fa = 0.22f; }
+            else { fr = 0.45f; fg = 0.47f; fb = 0.52f; fa = 0.16f; } // grey: unclaimed
+            if (s == hover) fa += 0.12f;
+            sr.setColor(fr, fg, fb, fa);
+            for (int k = 0; k < 6; k++) {
+                double a0 = Math.PI / 3 * k, a1 = Math.PI / 3 * (k + 1);
+                sr.triangle(cx, cy, cx + (float) Math.cos(a0) * rr, cy + (float) Math.sin(a0) * rr,
+                        cx + (float) Math.cos(a1) * rr, cy + (float) Math.sin(a1) * rr);
+            }
+            // outline
+            boolean pulse = s == alert && ((int) (w.time * 4)) % 2 == 0;
+            if (pulse) sr.setColor(World.ALERT);
+            else if (s == here) sr.setColor(0.4f, 0.9f, 1f, 1f);
+            else sr.setColor(0.4f, 0.55f, 0.8f, seen ? 0.55f : 0.25f);
+            float lw = s == here || pulse ? 2.5f : 1f;
+            for (int k = 0; k < 6; k++) {
+                double a0 = Math.PI / 3 * k, a1 = Math.PI / 3 * (k + 1);
+                sr.rectLine(cx + (float) Math.cos(a0) * rr, cy + (float) Math.sin(a0) * rr,
+                        cx + (float) Math.cos(a1) * rr, cy + (float) Math.sin(a1) * rr, lw);
+            }
+            if (!seen) continue;
+            float ts = Math.max(0.6f, Math.min(1f, rr / 40f));
+            txt(cx - rr * 0.6f, cy + rr * 0.45f, s.archetype.icon, s.archetype.color, ts);
+            if (mine[s.id] > 0) txt(cx - rr * 0.6f, cy - rr * 0.05f, "" + mine[s.id], w.player.color, ts * 0.85f);
+            if (foes[s.id] > 0) txt(cx + rr * 0.1f, cy - rr * 0.05f, "" + foes[s.id], World.ALERT, ts * 0.85f);
+            if (base[s.id]) txt(cx + rr * 0.05f, cy + rr * 0.45f, s.archetype == spacerts.world.SystemArchetype.CITADEL ? "C" : "P", new Color(1f, 0.35f, 0.3f, 1f), ts);
+            txt(cx - rr * 0.15f, cy - rr * 0.42f, "" + s.danger, dangerColor(s.danger), ts * 0.75f); // danger level
+        }
+        txt(20, H - TOP - 14, "GALAXY MAP  -  click a system to view it, right-click to send the selected ships there.  Tab / Esc closes.", TITLE, 0.9f);
+        txt(20, H - TOP - 34, "Blue: your colonies   Red: pirate strongholds   Numbers: your ships / pirates seen   "
+                + "* Nursery  o Belt  G Garden  F Fortress  R Frontier  A Ruins  ~ Nebula  . Void  P Haven", DIM, 0.75f);
+        if (hover != null) {
+            boolean seenH = explored(w, hover);
+            String info = hover.name + " - " + (seenH ? hover.archetype.title : "unexplored")
+                    + "   (" + w.galaxy.jumps(here, hover) + " jumps from view)\n"
+                    + "Danger " + hover.danger + " / " + w.galaxy.maxDanger() + "   Control: " + controlText(hover);
+            if (seenH) {
+                int patrols = spacerts.world.PirateBases.patrolsIn(w, hover);
+                info += "\n" + (patrols > 0 ? patrols + " pirate patrol ships sighted" : "No pirate patrols sighted");
+            }
+            tooltip = info;
+        }
+        txt(20, H - TOP - 54, "Conquest: build a Claim Beacon (Harvester) in a hex to own it. Numbers at the bottom of each hex are its danger.", DIM, 0.75f);
+    }
+
+    /** World area the minimap shows: the system the camera is in (the whole map in classic games). */
+    private float miniOx, miniOy, miniScale;
+
+    private void miniFrame(World w) {
+        StarSystem cs = w.systemAt(gs.cam.position.x, gs.cam.position.y);
+        float span = Math.max(cs.maxX() - cs.minX(), cs.maxY() - cs.minY());
+        miniOx = cs.cx - span / 2;
+        miniOy = cs.cy - span / 2;
+        miniScale = MINI / span;
+    }
+
     private void minimap(ShapeRenderer sr, World w) {
-        float x0 = W - MINI - 8, y0 = 7, s = MINI / World.SIZE;
+        miniFrame(w);
+        StarSystem sys = w.systemAt(gs.cam.position.x, gs.cam.position.y);
+        float x0 = W - MINI - 8, y0 = 7, s = miniScale;
+        float ox = x0 - miniOx * s, oy = y0 - miniOy * s; // screen position of world (0, 0)
         sr.setColor(ACCENT);
         sr.rect(x0 - 2, y0 - 2, MINI + 4, MINI + 4);
         sr.setColor(0, 0, 0.01f, 1f);
         sr.rect(x0, y0, MINI, MINI);
         VisionGrid vg = w.player.vision;
         float cs = vg.cell * s;
-        for (int cy = 0; cy < vg.cols; cy++)
-            for (int cx = 0; cx < vg.cols; cx++) {
+        int c0 = Math.max(0, (int) (sys.minX() / vg.cell)), c1 = Math.min(vg.cols - 1, (int) (sys.maxX() / vg.cell));
+        int r0 = Math.max(0, (int) (sys.minY() / vg.cell)), r1 = Math.min(vg.rows - 1, (int) (sys.maxY() / vg.cell));
+        for (int cy = r0; cy <= r1; cy++)
+            for (int cx = c0; cx <= c1; cx++) {
                 int i = cy * vg.cols + cx;
                 if (!vg.explored[i]) continue;
+                if (!sys.contains((cx + 0.5f) * vg.cell, (cy + 0.5f) * vg.cell)) continue;
                 if (vg.visible[i]) sr.setColor(0.07f, 0.11f, 0.2f, 1f);
                 else sr.setColor(0.035f, 0.05f, 0.1f, 1f);
-                sr.rect(x0 + cx * cs, y0 + cy * cs, cs + 0.3f, cs + 0.3f);
+                sr.rect(ox + cx * vg.cell * s, oy + cy * vg.cell * s, cs + 0.3f, cs + 0.3f);
             }
-        for (Body b : w.bodies) {
+        if (sys.hex) { // hex outline and its gates
+            sr.setColor(0.25f, 0.45f, 0.7f, 0.8f);
+            for (int k = 0; k < 6; k++)
+                sr.rectLine(ox + sys.cornerX(k) * s, oy + sys.cornerY(k) * s, ox + sys.cornerX(k + 1) * s, oy + sys.cornerY(k + 1) * s, 1f);
+        }
+        for (Body b : sys.bodies) {
             if (b.dead || !vg.isExplored(b.x, b.y)) continue;
-            float bx = x0 + b.x * s, by = y0 + b.y * s;
+            float bx = ox + b.x * s, by = oy + b.y * s;
             switch (b.kind) {
+                case GATE:
+                    sr.setColor(0.45f, 0.85f, 1f, 1f);
+                    sr.rect(bx - 2.5f, by - 2.5f, 5, 5);
+                    break;
                 case STAR:
                     sr.setColor(b.color);
                     sr.rect(bx - 1.5f, by - 1.5f, 3, 3);
                     break;
                 case ASTEROID:
+                case WRECK:
                     sr.setColor(0.45f, 0.43f, 0.4f, 1f);
                     sr.rect(bx - 0.5f, by - 0.5f, 1, 1);
                     break;
@@ -704,19 +967,20 @@ public class Hud {
         }
         for (Unit u : w.units) {
             if (u.dead || u.cls == ShipClass.DRONE || u.cls == ShipClass.COLONY || !w.canSee(w.player, u)) continue;
-            if (u.owner == w.natives) continue;
-            sr.setColor(u.owner.color);
-            float sz = u.cls == ShipClass.MOTHERSHIP ? 4 : (u.cls.isBuilding() ? 2.5f : 1.6f);
-            sr.rect(x0 + u.x * s - sz / 2, y0 + u.y * s - sz / 2, sz, sz);
+            if (u.owner == w.natives || !sys.contains(u.x, u.y)) continue;
+            if (u.cls == ShipClass.PIRATE_BASE) sr.setColor(1f, 0.3f, 0.25f, 1f);
+            else sr.setColor(u.owner.color);
+            float sz = u.cls == ShipClass.MOTHERSHIP || u.cls == ShipClass.PIRATE_BASE ? 5 : (u.cls.isBuilding() ? 2.5f : 1.6f);
+            sr.rect(ox + u.x * s - sz / 2, oy + u.y * s - sz / 2, sz, sz);
         }
         Faction pl = w.player;
         for (spacerts.world.Ping pg : w.pings) {
-            if (!pg.sniper || pg.owner != pl) continue;
+            if (!pg.sniper || pg.owner != pl || !sys.contains(pg.x, pg.y)) continue;
             sr.setColor(1f, 0.25f, 0.2f, ((int) (w.time * 6)) % 2 == 0 ? 1f : 0.4f);
-            sr.rect(x0 + pg.x * s - 2.5f, y0 + pg.y * s - 2.5f, 5, 5);
+            sr.rect(ox + pg.x * s - 2.5f, oy + pg.y * s - 2.5f, 5, 5);
         }
-        if (pl.hasFlag) {
-            float fx = x0 + pl.flagX * s, fy = y0 + pl.flagY * s;
+        if (pl.hasFlag && sys.contains(pl.flagX, pl.flagY)) {
+            float fx = ox + pl.flagX * s, fy = oy + pl.flagY * s;
             sr.setColor(Color.WHITE);
             sr.rect(fx - 0.5f, fy, 1, 8);
             sr.setColor(pl.color);
@@ -724,11 +988,11 @@ public class Hud {
         }
         OrthographicCamera cam = gs.cam;
         float vw = cam.viewportWidth * cam.zoom * s, vh = cam.viewportHeight * cam.zoom * s;
-        float cx = x0 + cam.position.x * s - vw / 2, cy = y0 + cam.position.y * s - vh / 2;
+        float cx = ox + cam.position.x * s - vw / 2, cy = oy + cam.position.y * s - vh / 2;
         float rx0 = Math.max(x0, cx), ry0 = Math.max(y0, cy), rx1 = Math.min(x0 + MINI, cx + vw), ry1 = Math.min(y0 + MINI, cy + vh);
         if (rx1 > rx0 && ry1 > ry0) border(sr, rx0, ry0, rx1 - rx0, ry1 - ry0, new Color(1f, 1f, 1f, 0.7f));
-        if (w.time - w.alertTime < 8 && ((int) (w.time * 4)) % 2 == 0) {
-            float ax = x0 + w.alertX * s, ay = y0 + w.alertY * s;
+        if (w.time - w.alertTime < 8 && ((int) (w.time * 4)) % 2 == 0 && sys.contains(w.alertX, w.alertY)) {
+            float ax = ox + w.alertX * s, ay = oy + w.alertY * s;
             border(sr, ax - 6, ay - 6, 12, 12, World.ALERT);
         }
     }
@@ -765,14 +1029,25 @@ public class Hud {
         String body =
                 "GOAL: Survive and expand forever. Rival empires and ever-growing pirate raids will come for you. Lose your Mothership and it is over.\n\n"
                         + "ECONOMY\n"
-                        + "  Harvesters (built by the Mothership) collect ENERGY from stars and METAL from asteroids and barren planets.\n"
-                        + "  Colonies also trickle in energy and metal. HOUSING limits your fleet: colonize Habitable Worlds (+10) or conquer Fortified Worlds (+25).\n"
-                        + "  Ships fly 50% faster when heading to one of your colonies.\n\n"
+                        + "  Harvesters (built by the Mothership) collect ENERGY from stars and METAL from asteroids, barren planets and WRECKS.\n"
+                        + "  Mining Barges (Ship Factory) are tough, slow haulers with a 150 hold. Destroyed ships leave wrecks worth HALF their metal.\n"
+                        + "  Scarce finds turn up now and then: Dark Matter (mining asteroids), Star Essence (starlight), Neutronium (salvage), Exotic Matter (ruins).\n"
+                        + "  HOUSING limits your fleet: colonize Habitable Worlds (+25) or conquer Fortified Worlds (+60). Every new colony brings a free Harvester.\n"
+                        + "  Ships fly 2x faster toward your colonies, and 1.75x toward any planet or while charging into an attack.\n\n"
                         + "BUILDING (select a Harvester)\n"
-                        + "  1 Ship Factory - builds all warships and Colony Ships.  2 Research Hub.  On your colonies: 3 Turret Upgrade (+2 turrets)\n"
-                        + "  or 4 Shield Upgrade (+400 planetary shield) - each colony has 5 upgrade points to split however you like.\n"
-                        + "  5 Mender - a crawling mobile repair station (6 housing) that heals everything around it.\n"
-                        + "  6 Solar Collector (next to a star, 6 energy/s)  7 Asteroid Miner (asteroid field or metal planet, 5 metal/s) - no hauling.\n\n"
+                        + "  1 Ship Factory  2 Research Hub  3 Repair Station (placed; heals everything within 400)  4 Solar Collector  5 Asteroid Miner\n"
+                        + "  Mothership tier II: 7 Defense Platform  8 Ore Refinery (+25% metal)  9 Sensor Array.   Tier III: 0 Ion Cannon.\n"
+                        + "  PLANET UPGRADES: click your colony, then 1 Turret Upgrade or 2 Shield Upgrade - the nearest Harvester builds it (5 points per colony).\n\n"
+                        + "TIERS (select it, then U or its upgrade button)\n"
+                        + "  Mothership I-III: more hull, guns and buildings.  Ship Factory I-III: 30% faster per tier; tier II unlocks Corsair, Tempest,\n"
+                        + "  Aegis, Phantom; tier III unlocks Sovereign, Halcyon, Leviathan.  Research Hub tiers (Hub Expansion research) research 25% faster.\n"
+                        + "  WARSHIP PRICES grow logarithmically with how many of that type you have: 10 in service = +84%, 50 = +138%. Mix your fleet.\n\n"
+                        + (gs.world.galaxy.hive
+                        ? "HIVE GALAXY (pirates only) - conquer it hex by hex\n"
+                        + "  You start at the BOTTOM. Danger rises toward the Pirate Citadel at the top. 6 Claim Beacon (Harvester) claims a hex: +income, no stronghold rises near it.\n"
+                        + "  JUMP GATES join the hexes: right-click a gate to fly through. Tab: GALAXY MAP (grey = unclaimed, blue = yours, red = pirate).\n"
+                        + "  Destroy the Citadel, claim its hex and build the ASCENSION GATE (- key, Mothership tier III) to win. J jumps to the last alert.\n\n"
+                        : "")
                         + "RESEARCH\n"
                         + "  Select the Research Hub (B) to research tech and build Surveyors.\n"
                         + "  Surveyors land on uninhabitable planets and extract RARE ITEMS: Volcanic=Pyro, Ice=Cryo, Gas giant=Plasma,\n"
@@ -782,7 +1057,8 @@ public class Hud {
                         + "CONTROLS\n"
                         + "  Left-click / drag to select. Right-click to move / attack / harvest / colonize / survey. Ctrl+Right-click: attack-move.\n"
                         + "  F places the RALLY FLAG where new warships gather (Shift+F removes). Shift+right-click with a factory sets its own rally point; right-click moves it (factories and the Hub crawl like the Mothership).\n"
-                        + "  G toggles AUTO-DEFENSE: idle warships defend your bases, harvesters flee raids, damaged ships retreat to Menders.\n"
+                        + "  G toggles AUTO-DEFENSE: idle warships defend your bases and harvesters flee raids.\n"
+                        + "  R toggles AUTO-RETREAT for the selected warships: below 25% hull they pull back to a Mender or base, repair, and return.\n"
                         + "  Snipers (Longbow, Phantom) are revealed for 4 s with a red crosshair whenever they shoot at you.\n"
                         + "  Number keys 1-9, 0, -, = build from the selected factory / structure / harvester.\n"
                         + "  H Mothership   F2 Ship Factories   B Research Hub   I idle harvesters   Ctrl+A all warships   Q ability   X stop   C center\n"
@@ -807,6 +1083,29 @@ public class Hud {
             aligned(bx, by + 22, w, labels[i], Color.WHITE, 1f, Align.center);
             buttons.add(new Btn(bx, by, w, h, actions[i]));
         }
+    }
+
+    /** Shown once when the Ascension Gate completes; "Keep playing" closes it. */
+    private boolean victoryDismissed;
+
+    private void victory(ShapeRenderer sr, World w) {
+        float bw = 620, bh = 230;
+        overlayBox(sr, bw, bh);
+        float x = (W - bw) / 2, y = (H + bh) / 2;
+        aligned(x, y - 30, bw, "ASCENSION", World.GOOD, 1.8f, Align.center);
+        aligned(x, y - 80, bw, "The Ascension Gate is complete. The pirate clans are broken.", Color.WHITE, 1.05f, Align.center);
+        aligned(x, y - 108, bw, "Conquered " + spacerts.systems.ConquestSystem.ownedCount(w) + " of " + w.galaxy.systems.size()
+                + " hexes in " + clock(w.time) + ".", DIM, 0.95f, Align.center);
+        float bx = x + bw / 2 - 110, by = y - bh + 26, bW = 220, bH = 34;
+        boolean hov = hovered(bx, by, bW, bH);
+        sr.setColor(hov ? 0.15f : 0.08f, hov ? 0.4f : 0.28f, hov ? 0.25f : 0.18f, 1f);
+        sr.rect(bx, by, bW, bH);
+        aligned(bx, by + 23, bW, "Keep playing", Color.WHITE, 1f, Align.center);
+        buttons.add(new Btn(bx, by, bW, bH, () -> victoryDismissed = true));
+    }
+
+    public boolean victoryShowing() {
+        return gs.world.ascended && !victoryDismissed;
     }
 
     private void gameOver(ShapeRenderer sr, World w) {

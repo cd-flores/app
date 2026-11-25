@@ -12,6 +12,8 @@ import spacerts.units.Unit;
 import spacerts.world.Body;
 import spacerts.world.Faction;
 import spacerts.world.PlanetType;
+import spacerts.world.StarSystem;
+import spacerts.world.SystemArchetype;
 import spacerts.world.World;
 
 import java.util.ArrayList;
@@ -35,21 +37,34 @@ public final class SaveManager {
         public BodyData[] bodies;
         public UnitData[] units;
         public boolean[] explored;
+        /** Hive galaxy: each system's name and archetype, by system id (geometry is rebuilt from the mode). */
+        public String[] sysNames, sysArch;
+        public float pirateRespawn;
+        /** Hive hex radius the save was made with (0 in old saves = the original 3600 layout). */
+        public float hexR;
+        public boolean ascended;
     }
 
     public static class FactionData {
-        public float energy, metal, researchProgress;
+        public double energy, metal;
+        public float researchProgress;
         public int[] rare;
         public String[] techs;
         public String researching;
         public boolean eliminated, hasFlag, autoDefenseOff;
+        public boolean[] found;
+        public int refinement;
         public float flagX, flagY;
     }
 
     public static class BodyData {
         public String kind, type, name;
-        public float x, y, r, metal, maxMetal, guardRadius, guardTimer, cr, cg, cb;
+        public float x, y, r, guardRadius, guardTimer, cr, cg, cb, life;
+        public double metal, maxMetal;
         public int maxGuards, defenseLevel, turretPoints, shieldPoints; // defenseLevel: older saves
+        public int link = -1, side = -1; // jump gates: index of the paired gate, hex side
+        public int lootNeutron, lootExotic;
+        public boolean giant;
     }
 
     public static class UnitData {
@@ -58,8 +73,16 @@ public final class SaveManager {
         public float buildX, buildY;
         public String cls, order;
         public String[] queue;
+        /** What was paid for each queued item: energy, metal, energy, metal, ... (older saves: missing = base price). */
+        public int[] queuePaid;
         public float x, y, hp, shield, angle, tx, ty, anchorX, anchorY, cargo, work, progress, rallyX, rallyY, radius, abilityCd;
         public boolean cargoEnergy, hasRally, leaving;
+        public boolean retreating, retreatOff, autoTask;
+        public float homeX, homeY;
+        public int station = -1; // pirate garrison: id of its stronghold
+        public int tier = 1;
+        public boolean hasPost;
+        public float postX, postY;
     }
 
     public static FileHandle file() {
@@ -86,6 +109,17 @@ public final class SaveManager {
         d.victoryAnnounced = w.victoryAnnounced;
         d.difficulty = w.difficulty.name();
         d.explored = w.player.vision.explored.clone();
+        d.pirateRespawn = w.pirateRespawn;
+        d.hexR = w.galaxy.hive ? spacerts.world.Galaxy.HEX_R : 0;
+        d.ascended = w.ascended;
+        int ns = w.galaxy.systems.size();
+        d.sysNames = new String[ns];
+        d.sysArch = new String[ns];
+        for (int i = 0; i < ns; i++) {
+            StarSystem s = w.galaxy.systems.get(i);
+            d.sysNames[i] = s.name;
+            d.sysArch[i] = s.archetype.name();
+        }
 
         d.factions = new FactionData[w.factions.size()];
         for (int i = 0; i < w.factions.size(); i++) {
@@ -104,6 +138,8 @@ public final class SaveManager {
             fd.autoDefenseOff = !f.autoDefense;
             fd.flagX = f.flagX;
             fd.flagY = f.flagY;
+            fd.found = f.found.clone();
+            fd.refinement = f.refinement;
             d.factions[i] = fd;
         }
 
@@ -123,6 +159,7 @@ public final class SaveManager {
             bd.r = b.radius;
             bd.metal = b.metal;
             bd.maxMetal = b.maxMetal;
+            bd.life = b.life;
             bd.guardRadius = b.guardRadius;
             bd.guardTimer = b.guardTimer;
             bd.maxGuards = b.maxGuards;
@@ -131,7 +168,16 @@ public final class SaveManager {
             bd.cr = b.color.r;
             bd.cg = b.color.g;
             bd.cb = b.color.b;
+            bd.side = b.side;
+            bd.lootNeutron = b.lootNeutron;
+            bd.lootExotic = b.lootExotic;
+            bd.giant = b.giant;
             d.bodies[i] = bd;
+        }
+        for (int i = 0; i < live.size(); i++) {
+            Body b = live.get(i);
+            Integer li = b.link != null ? bodyIndex.get(b.link) : null;
+            if (li != null) d.bodies[i].link = li;
         }
 
         List<UnitData> uds = new ArrayList<>();
@@ -158,6 +204,16 @@ public final class SaveManager {
             ud.work = u.work;
             ud.abilityCd = u.abilityCd;
             ud.leaving = u.leaving;
+            ud.retreating = u.retreating;
+            ud.retreatOff = u.retreatOff;
+            ud.autoTask = u.autoTask;
+            ud.homeX = u.homeX;
+            ud.homeY = u.homeY;
+            ud.station = u.station != null && !u.station.dead ? u.station.id : -1;
+            ud.tier = u.tier;
+            ud.hasPost = u.hasPost;
+            ud.postX = u.postX;
+            ud.postY = u.postY;
             ud.hasRally = u.hasRally;
             ud.rallyX = u.rallyX;
             ud.rallyY = u.rallyY;
@@ -175,7 +231,13 @@ public final class SaveManager {
             ud.parent = u.parent != null && !u.parent.dead ? u.parent.id : -1;
             if (u.queue != null) {
                 ud.queue = new String[u.queue.items.size()];
-                for (int i = 0; i < ud.queue.length; i++) ud.queue[i] = u.queue.items.get(i).name();
+                ud.queuePaid = new int[ud.queue.length * 2];
+                for (int i = 0; i < ud.queue.length; i++) {
+                    ud.queue[i] = u.queue.items.get(i).name();
+                    int[] paid = u.queue.paidAt(i);
+                    ud.queuePaid[i * 2] = paid[0];
+                    ud.queuePaid[i * 2 + 1] = paid[1];
+                }
                 ud.progress = u.queue.progress;
             }
             uds.add(ud);
@@ -199,6 +261,8 @@ public final class SaveManager {
         SaveData d = json.fromJson(SaveData.class, text);
         if (d == null) return null;
 
+        if (d.rivals == 0 && d.hexR != spacerts.world.Galaxy.HEX_R) // positions would land in the wrong hexes
+            throw new IllegalStateException("This save is from the older, smaller Hive layout and can't be loaded");
         World w = new World(d.seed, d.rivals, spacerts.world.Difficulty.parse(d.difficulty));
         w.time = d.time;
         w.threats.nextWave = d.nextWave;
@@ -220,6 +284,9 @@ public final class SaveManager {
             f.autoDefense = !fd.autoDefenseOff;
             f.flagX = fd.flagX;
             f.flagY = fd.flagY;
+            if (fd.found != null) for (int k = 0; k < fd.found.length && k < f.found.length; k++) f.found[k] = fd.found[k];
+            f.refinement = Math.max(0, Math.min(Faction.REFINEMENT_MAX, fd.refinement));
+            for (int k = 0; k < f.found.length; k++) if (f.rare[k] > 0) f.found[k] = true;
         }
         if (d.explored != null && d.explored.length == w.player.vision.explored.length)
             w.player.vision.explored = d.explored.clone();
@@ -231,15 +298,35 @@ public final class SaveManager {
             b.name = bd.name != null ? bd.name : "";
             b.metal = bd.metal;
             b.maxMetal = bd.maxMetal;
+            b.life = bd.life;
             b.guardRadius = bd.guardRadius;
             b.guardTimer = bd.guardTimer;
             b.maxGuards = bd.maxGuards;
             b.turretPoints = bd.turretPoints + bd.defenseLevel;
             b.shieldPoints = bd.shieldPoints;
             b.color.set(bd.cr, bd.cg, bd.cb, 1f);
+            b.side = bd.side;
+            b.lootNeutron = bd.lootNeutron;
+            b.lootExotic = bd.lootExotic;
+            b.giant = bd.giant;
             bodies.add(b);
             w.bodies.add(b);
         }
+        // systems: names, archetypes, gate links
+        w.pirateRespawn = d.pirateRespawn;
+        w.ascended = d.ascended;
+        if (d.sysNames != null)
+            for (int i = 0; i < d.sysNames.length && i < w.galaxy.systems.size(); i++) {
+                StarSystem s = w.galaxy.systems.get(i);
+                s.name = d.sysNames[i] != null ? d.sysNames[i] : "";
+                if (d.sysArch != null && d.sysArch[i] != null) s.archetype = SystemArchetype.valueOf(d.sysArch[i]);
+            }
+        for (int i = 0; i < d.bodies.length; i++) {
+            Body b = bodies.get(i);
+            if (d.bodies[i].link >= 0 && d.bodies[i].link < bodies.size()) b.link = bodies.get(d.bodies[i].link);
+            if (b.isGate() && b.side >= 0) w.systemAt(b.x, b.y).gates[b.side] = b;
+        }
+        w.galaxy.indexBodies(w.bodies);
 
         Map<Integer, Unit> byId = new HashMap<>();
         int maxId = 0;
@@ -264,6 +351,15 @@ public final class SaveManager {
             u.work = ud.work;
             u.abilityCd = ud.abilityCd;
             u.leaving = ud.leaving;
+            u.retreating = ud.retreating;
+            u.retreatOff = ud.retreatOff;
+            u.autoTask = ud.autoTask;
+            u.homeX = ud.homeX;
+            u.homeY = ud.homeY;
+            u.tier = Math.max(1, ud.tier);
+            u.hasPost = ud.hasPost;
+            u.postX = ud.postX;
+            u.postY = ud.postY;
             u.hasRally = ud.hasRally;
             u.rallyX = ud.rallyX;
             u.rallyY = ud.rallyY;
@@ -277,7 +373,11 @@ public final class SaveManager {
                 u.buildPaid = true;
             }
             if (u.queue != null && ud.queue != null) {
-                for (String q : ud.queue) u.queue.items.add(ShipClass.valueOf(q));
+                for (int i = 0; i < ud.queue.length; i++) {
+                    ShipClass q = ShipClass.valueOf(ud.queue[i]);
+                    boolean has = ud.queuePaid != null && ud.queuePaid.length >= i * 2 + 2;
+                    u.queue.add(q, has ? ud.queuePaid[i * 2] : q.s.energy, has ? ud.queuePaid[i * 2 + 1] : q.s.metal);
+                }
                 u.queue.progress = ud.progress;
             }
             if (u.order == Order.ATTACK) u.order = Order.IDLE; // targets are not saved
@@ -287,6 +387,7 @@ public final class SaveManager {
 
         for (UnitData ud : d.units) {
             Unit u = byId.get(ud.id);
+            if (ud.station >= 0) u.station = byId.get(ud.station);
             if (ud.parent >= 0) {
                 Unit p = byId.get(ud.parent);
                 if (p != null && p.drones != null) {
@@ -309,6 +410,24 @@ public final class SaveManager {
         w.units.removeIf(u -> u.dead);
         w.computePopulation();
         w.updateVision();
+        w.conquest.recount();
         return w;
+    }
+
+    // ------------------------------------------------------------------ autosave for long campaigns
+
+    public static final String AUTOSAVE = "nebula_dominion_autosave.json";
+
+    public static void autosave(World w) {
+        Gdx.files.local(AUTOSAVE).writeString(toJson(w), false);
+    }
+
+    public static boolean autosaveExists() {
+        return Gdx.files.local(AUTOSAVE).exists();
+    }
+
+    public static World loadAutosave() {
+        if (!autosaveExists()) return null;
+        return fromJson(Gdx.files.local(AUTOSAVE).readString());
     }
 }

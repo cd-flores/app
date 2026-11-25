@@ -48,13 +48,14 @@ public class MenuScreen extends ScreenAdapter {
             @Override
             public boolean keyDown(int key) {
                 switch (key) {
-                    case Input.Keys.LEFT: rivals = Math.max(1, rivals - 1); break;
+                    case Input.Keys.LEFT: rivals = Math.max(0, rivals - 1); break;
                     case Input.Keys.RIGHT: rivals = Math.min(3, rivals + 1); break;
                     case Input.Keys.UP: difficulty = difficulty.easier(); break;
                     case Input.Keys.DOWN: difficulty = difficulty.harder(); break;
                     case Input.Keys.R: seed = new Random().nextInt(999999); break;
                     case Input.Keys.ENTER: start(); break;
                     case Input.Keys.L: load(); break;
+                    case Input.Keys.A: loadAutosave(); break;
                     case Input.Keys.ESCAPE: Gdx.app.exit(); break;
                     default: break;
                 }
@@ -68,6 +69,20 @@ public class MenuScreen extends ScreenAdapter {
         GalaxyGenerator.generate(w);
         game.setScreen(new GameScreen(game, w));
         dispose();
+    }
+
+    private void loadAutosave() {
+        try {
+            World w = SaveManager.loadAutosave();
+            if (w == null) {
+                status = "No autosave found.";
+                return;
+            }
+            game.setScreen(new GameScreen(game, w));
+            dispose();
+        } catch (Exception e) {
+            status = "Could not load autosave: " + e.getMessage();
+        }
     }
 
     private void load() {
@@ -123,19 +138,31 @@ public class MenuScreen extends ScreenAdapter {
         f.getData().setScale(1.4f);
         f.setColor(Color.WHITE);
         float y = H * 0.5f;
-        f.draw(game.batch, "Rival empires:  <  " + rivals + "  >      (Left / Right)", 0, y, W, Align.center, false);
-        f.draw(game.batch, "Galaxy seed:  " + seed + "      (R to reroll)", 0, y - 40, W, Align.center, false);
+        if (rivals == 0) {
+            f.setColor(1f, 0.6f, 0.45f, 1f);
+            f.draw(game.batch, "Opponents:  <  Pirates: Hive Galaxy  >      (Left / Right)", 0, y, W, Align.center, false);
+            f.getData().setScale(1f);
+            f.setColor(0.75f, 0.7f, 0.65f, 1f);
+            f.draw(game.batch, "No rival empires. 91 hex systems joined by jump gates; pirate strongholds raid you forever.",
+                    0, y - 24, W, Align.center, false);
+            f.getData().setScale(1.4f);
+            f.setColor(Color.WHITE);
+        } else
+            f.draw(game.batch, "Rival empires:  <  " + rivals + "  >      (Left / Right)", 0, y, W, Align.center, false);
+        f.draw(game.batch, "Galaxy seed:  " + seed + "      (R to reroll)", 0, y - (rivals == 0 ? 52 : 40), W, Align.center, false);
         f.setColor(difficulty == Difficulty.EASY ? new Color(0.5f, 1f, 0.6f, 1f) : difficulty == Difficulty.HARD ? new Color(1f, 0.5f, 0.45f, 1f) : Color.WHITE);
         f.draw(game.batch, "Difficulty:  <  " + difficulty.title + "  >      (Up / Down)", 0, y + 40, W, Align.center, false);
         f.setColor(0.5f, 1f, 0.6f, 1f);
         f.draw(game.batch, "ENTER  -  New Game", 0, y - 110, W, Align.center, false);
         f.setColor(SaveManager.exists() ? new Color(0.6f, 0.85f, 1f, 1f) : Color.GRAY);
         f.draw(game.batch, "L  -  Load Saved Game", 0, y - 150, W, Align.center, false);
+        f.setColor(SaveManager.autosaveExists() ? new Color(0.6f, 0.85f, 1f, 1f) : Color.GRAY);
+        f.draw(game.batch, "A  -  Load Autosave", 0, y - 190, W, Align.center, false);
         f.setColor(Color.GRAY);
-        f.draw(game.batch, "ESC  -  Quit", 0, y - 190, W, Align.center, false);
+        f.draw(game.batch, "ESC  -  Quit", 0, y - 230, W, Align.center, false);
         f.getData().setScale(1.1f);
         f.setColor(1f, 0.5f, 0.45f, 1f);
-        f.draw(game.batch, status, 0, y - 240, W, Align.center, false);
+        f.draw(game.batch, status, 0, y - 280, W, Align.center, false);
         f.getData().setScale(1f);
         game.batch.end();
     }

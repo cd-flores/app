@@ -12,6 +12,7 @@ import spacerts.units.Order;
 import spacerts.units.ShipClass;
 import spacerts.units.Unit;
 import spacerts.world.Body;
+import spacerts.world.StarSystem;
 import spacerts.world.World;
 
 import java.util.ArrayList;
@@ -100,14 +101,17 @@ public class GameInput extends InputAdapter {
             if (my < 4) dy += speed;
             if (my > H - 5) dy -= speed;
         }
-        cam.position.x = Math.max(0, Math.min(World.SIZE, cam.position.x + dx));
-        cam.position.y = Math.max(0, Math.min(World.SIZE, cam.position.y + dy));
+        // panning stays inside the system being viewed; gates, the minimap and the galaxy map move between systems
+        StarSystem view = w().systemAt(cam.position.x, cam.position.y);
+        cam.position.x = Math.max(view.minX(), Math.min(view.maxX(), cam.position.x + dx));
+        cam.position.y = Math.max(view.minY(), Math.min(view.maxY(), cam.position.y + dy));
         cam.update();
     }
 
     public void moveCamera(float x, float y) {
-        gs.cam.position.x = Math.max(0, Math.min(World.SIZE, x));
-        gs.cam.position.y = Math.max(0, Math.min(World.SIZE, y));
+        StarSystem s = w().systemAt(x, y);
+        gs.cam.position.x = Math.max(s.minX(), Math.min(s.maxX(), x));
+        gs.cam.position.y = Math.max(s.minY(), Math.min(s.maxY(), y));
         gs.cam.update();
     }
 
@@ -131,6 +135,19 @@ public class GameInput extends InputAdapter {
         curY = sy;
         if (gs.showHelp || gs.menuOpen) {
             if (button == Input.Buttons.LEFT) gs.hud.click(sx, sy);
+            return true;
+        }
+        if (gs.showGalaxy) { // galaxy map: click to view a system, right-click to send the selection there
+            if (button == Input.Buttons.LEFT && gs.hud.click(sx, sy)) return true;
+            StarSystem s = gs.hud.galaxyPick(sx, sy);
+            if (s == null) return true;
+            if (button == Input.Buttons.LEFT) {
+                moveCamera(s.cx, s.cy);
+                gs.showGalaxy = false;
+            } else if (button == Input.Buttons.RIGHT) {
+                issueOrder(s.cx, s.cy, ctrl());
+                w().notify(w().player, "Ships routed to " + s.name + " (" + s.archetype.title + ").", World.INFO);
+            }
             return true;
         }
         if (isPlacing() && button == Input.Buttons.RIGHT) {
@@ -224,7 +241,7 @@ public class GameInput extends InputAdapter {
         if (gs.hud.contains(Gdx.input.getX(), Gdx.input.getY())) return true;
         OrthographicCamera cam = gs.cam;
         Vector3 before = toWorld(Gdx.input.getX(), Gdx.input.getY()).cpy();
-        cam.zoom = Math.max(0.35f, Math.min(8f, cam.zoom * (amountY > 0 ? 1.15f : 1f / 1.15f)));
+        cam.zoom = Math.max(0.35f, Math.min(w().galaxy.hive ? 24f : 8f, cam.zoom * (amountY > 0 ? 1.15f : 1f / 1.15f))); // the Hive's hexes are huge
         cam.update();
         Vector3 after = toWorld(Gdx.input.getX(), Gdx.input.getY());
         moveCamera(cam.position.x + before.x - after.x, cam.position.y + before.y - after.y);
@@ -281,8 +298,21 @@ public class GameInput extends InputAdapter {
             return;
         }
         Body b = w.bodyAt(p.x, p.y, 8 * gs.cam.zoom);
-        if (b != null && w.player.vision.isExplored(b.x, b.y)) inspectBody = b;
+        if (b != null && w.player.vision.isExplored(b.x, b.y)) {
+            // double-click a jump gate: look through it into the neighbouring system
+            if (b.isGate() && b.link != null && b == lastClickBody && w.time - lastClickTime < 0.4f) {
+                float[] e = spacerts.systems.MovementSystem.exitPoint(w, b.link, 900, 0);
+                moveCamera(e[0], e[1]);
+                lastClickBody = null;
+                return;
+            }
+            lastClickBody = b;
+            lastClickTime = w.time;
+            inspectBody = b;
+        }
     }
+
+    private Body lastClickBody;
 
     private void selectSameOnScreen(ShipClass cls) {
         selected.clear();
@@ -347,16 +377,9 @@ public class GameInput extends InputAdapter {
             w.notify(w.player, why, World.ALERT);
             return;
         }
-        if (c == ShipClass.MENDER) {
-            Unit b = pickBuilder(h.x, h.y);
-            String err = w.construction.order(b, c, null, b.x, b.y);
-            if (err != null) w.notify(w.player, err, World.ALERT);
-            return;
-        }
         placingFlag = false;
         placing = c;
-        String where = c.isPlanetUpgrade() ? "Left-click one of your colonies"
-                : c == ShipClass.SOLAR ? "Left-click a star" : c == ShipClass.MINER ? "Left-click an asteroid or metal-rich planet" : "Left-click open space";
+        String where = c == ShipClass.SOLAR ? "Left-click a star" : c == ShipClass.MINER ? "Left-click an asteroid or metal-rich planet" : "Left-click open space";
         w.notify(w.player, where
                 + " to build " + c.s.name + ". Right-click or Esc cancels.", World.INFO);
     }
@@ -365,8 +388,8 @@ public class GameInput extends InputAdapter {
         World w = w();
         if (placingFlag) {
             w.player.hasFlag = true;
-            w.player.flagX = World.clampPos(wx);
-            w.player.flagY = World.clampPos(wy);
+            w.player.flagX = w.clampX(wx, wy);
+            w.player.flagY = w.clampY(wx, wy);
             placingFlag = false;
             w.ring(wx, wy, 60 * gs.cam.zoom, w.player.color, 0.5f);
             w.notify(w.player, "Rally flag placed. New warships will gather here (Shift+F removes it).", World.GOOD);
@@ -374,13 +397,7 @@ public class GameInput extends InputAdapter {
         }
         ShipClass c = placing;
         Body body = null;
-        if (c.targetsBody()) {
-            body = w.bodyAt(wx, wy, 30 * gs.cam.zoom);
-            if (body == null && c.isPlanetUpgrade()) {
-                Unit col = pickUnit(wx, wy, true);
-                if (col != null && col.cls == ShipClass.COLONY) body = col.home;
-            }
-        }
+        if (c.targetsBody()) body = w.bodyAt(wx, wy, 30 * gs.cam.zoom);
         Unit h = pickBuilder(wx, wy);
         if (h == null) {
             cancelPlacement();
@@ -421,6 +438,13 @@ public class GameInput extends InputAdapter {
         Unit enemy = pickUnit(wx, wy, false);
         Body body = w.bodyAt(wx, wy, 10 * gs.cam.zoom);
         if (body != null && !w.player.vision.isExplored(body.x, body.y)) body = null;
+        if (enemy == null && body != null && body.isGate() && body.link != null) {
+            // right-click a jump gate: go through it and gather just past the far gate
+            float[] e = spacerts.systems.MovementSystem.exitPoint(w, body.link, 380, 0);
+            wx = e[0];
+            wy = e[1];
+            body = null;
+        }
 
         int n = movers.size();
         int cols = Math.max(1, (int) Math.ceil(Math.sqrt(n)));
@@ -482,6 +506,11 @@ public class GameInput extends InputAdapter {
         }
         for (int i = 0; i < BUILD_KEYS.length; i++) {
             if (key == BUILD_KEYS[i]) {
+                Body colony = selectedColony();
+                if (colony != null) {
+                    if (i < PLANET_UPGRADES.length) upgradePlanet(colony, PLANET_UPGRADES[i]);
+                    return true;
+                }
                 Unit p = activeProducer();
                 if (p != null) {
                     ShipClass[] list = p.cls.buildList();
@@ -519,7 +548,7 @@ public class GameInput extends InputAdapter {
                 return true;
             case Input.Keys.G:
                 w.player.autoDefense = !w.player.autoDefense;
-                w.notify(w.player, "Auto-defense " + (w.player.autoDefense ? "ON: idle ships defend your bases, harvesters flee raids, damaged ships retreat to Menders."
+                w.notify(w.player, "Auto-defense " + (w.player.autoDefense ? "ON: idle ships defend your bases and harvesters flee raids."
                         : "OFF: your units only do what you tell them."), World.INFO);
                 return true;
             case Input.Keys.F2: {
@@ -535,12 +564,32 @@ public class GameInput extends InputAdapter {
                 moveCamera(fac.x, fac.y);
                 return true;
             }
+            case Input.Keys.TAB:
+                if (w.galaxy.hive) gs.showGalaxy = !gs.showGalaxy;
+                return true;
+            case Input.Keys.J: // jump the camera to the latest alert
+                if (w.time - w.alertTime < 60) moveCamera(w.alertX, w.alertY);
+                return true;
             case Input.Keys.ESCAPE:
-                if (isPlacing()) cancelPlacement();
+                if (gs.showGalaxy) gs.showGalaxy = false;
+                else if (isPlacing()) cancelPlacement();
                 else if (!selected.isEmpty() || inspectUnit != null || inspectBody != null) reset();
                 else gs.menuOpen = true;
                 return true;
             case Input.Keys.Q: useAbilities(); return true;
+            case Input.Keys.U: { // queue the next tier upgrade on the selected Mothership / Ship Factory
+                Unit p = activeProducer();
+                if (p == null) return true;
+                for (ShipClass c : p.cls.buildList())
+                    if (c.isUpgrade() && c.s.upgradeTo == p.tier + 1) {
+                        String err = w.production.enqueue(p, c);
+                        w.notify(w.player, err != null ? err : c.s.name + " started.", err != null ? World.ALERT : World.INFO);
+                        return true;
+                    }
+                w.notify(w.player, p.s.name + " can't be upgraded further.", World.INFO);
+                return true;
+            }
+            case Input.Keys.R: toggleRetreat(); return true;
             case Input.Keys.X:
                 for (Unit u : selected) if (u.owner == w.player && !u.s.stationary) {
                     u.idle();
@@ -586,6 +635,57 @@ public class GameInput extends InputAdapter {
             default:
                 return false;
         }
+    }
+
+    /** Upgrades offered on a selected colony, in hotkey order (1, 2). */
+    public static final ShipClass[] PLANET_UPGRADES = {ShipClass.DEF_TURRET, ShipClass.DEF_SHIELD};
+
+    /** The player's colony planet when exactly that colony is selected (or inspected), else null. */
+    public Body selectedColony() {
+        World w = w();
+        if (selected.size() == 1) {
+            Unit u = selected.get(0);
+            if (!u.dead && u.owner == w.player && u.cls == ShipClass.COLONY && u.home != null) return u.home;
+            return null;
+        }
+        if (selected.isEmpty() && inspectBody != null && inspectBody.colonized() && inspectBody.colony.owner == w.player)
+            return inspectBody;
+        return null;
+    }
+
+    /** Sends the nearest free harvester to build a turret or shield upgrade on one of the player's colonies. */
+    public void upgradePlanet(Body colony, ShipClass c) {
+        World w = w();
+        String why = w.construction.baseBlocker(w.player, c);
+        if (why == null) why = w.player.missing(c.s.energy, c.s.metal, c.s.rare);
+        Unit h = null;
+        if (why == null) {
+            h = w.construction.nearestFreeBuilder(w.player, colony);
+            if (h == null) why = "No free harvester to build the upgrade";
+        }
+        if (why == null) why = w.construction.order(h, c, colony, colony.x, colony.y);
+        if (why != null) {
+            w.notify(w.player, why, World.ALERT);
+            return;
+        }
+        w.notify(w.player, "A harvester is on its way to build a " + c.s.name + " on " + colony.name + ".", World.INFO);
+        w.ring(colony.x, colony.y, colony.radius * 2f, MOVE_C, 0.35f);
+    }
+
+    /** R: switches auto-retreat on or off for the selected warships (all on unless every one is already on). */
+    public void toggleRetreat() {
+        World w = w();
+        boolean anyOff = false, any = false;
+        for (Unit u : selected)
+            if (!u.dead && u.owner == w.player && u.cls.isWarship()) {
+                any = true;
+                if (u.retreatOff) anyOff = true;
+            }
+        if (!any) return;
+        for (Unit u : selected)
+            if (!u.dead && u.owner == w.player && u.cls.isWarship()) u.retreatOff = !anyOff;
+        w.notify(w.player, anyOff ? "Auto-retreat ON: these ships pull back to repair below 25% hull."
+                : "Auto-retreat OFF: these ships fight to the end.", World.INFO);
     }
 
     private void useAbilities() {
