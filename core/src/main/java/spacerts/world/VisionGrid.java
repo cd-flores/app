@@ -17,6 +17,12 @@ public class VisionGrid {
         this.explored = new boolean[cols * rows];
     }
 
+    /** ISeeDeadPeople: everything visible and explored. */
+    public void revealAll() {
+        Arrays.fill(visible, true);
+        Arrays.fill(explored, true);
+    }
+
     public void beginFrame() {
         Arrays.fill(visible, false);
     }

@@ -36,6 +36,7 @@ public class ThreatDirector {
     public static final float SURGE_EVERY = 60f;
 
     public void update(float dt) {
+        if (w.raidsFrozen) nextWave += dt; // DayLightSavings cheat: the raid timer stands still
         if (w.galaxy.hive) { // pirates harden the higher you climb, so a campaign can run for days
             int frontier = ConquestSystem.frontier(w);
             w.pirates.extraHp = 0.06f * frontier;
@@ -113,13 +114,13 @@ public class ThreatDirector {
         }
         if (source != null) {
             int count = spawnRaid(budget, source.x, source.y, source.radius + 160, target);
-            if (victim == w.player) {
+            if (victim.isPlayer()) {
                 StarSystem from = w.systemAt(source.x, source.y), to = w.systemAt(target.x, target.y);
                 int jumps = w.galaxy.jumps(from, to);
                 w.notify(victim, "Pirate raid! " + count + " ships launched from " + from.name
                         + (jumps > 0 ? ", " + jumps + " jump" + (jumps > 1 ? "s" : "") + " away," : "")
                         + " heading for your " + target.s.name + " in " + to.name + ".", World.ALERT);
-                w.alert(target.x, target.y);
+                if (victim == w.player) w.alert(target.x, target.y);
             }
             return;
         }
@@ -140,10 +141,8 @@ public class ThreatDirector {
         }
 
         int count = spawnRaid(budget, sx, sy, 0, target);
-        if (victim == w.player) {
-            w.notify(victim, "Pirate raid detected! " + count + " ships inbound to your " + target.s.name + ".", World.ALERT);
-            w.alert(target.x, target.y);
-        }
+        w.notify(victim, "Pirate raid detected! " + count + " ships inbound to your " + target.s.name + ".", World.ALERT);
+        if (victim == w.player) w.alert(target.x, target.y);
     }
 
     /** Spends a raid budget on ships around (sx, sy) (pushed out by `ring`) and sends them at the target. */

@@ -33,11 +33,14 @@ public class AutoDefense {
         if (timer > 0) return;
         timer = 1f;
         retreats();
-        Faction p = w.player;
-        if (p.eliminated || !p.autoDefense) return;
-        harvestersFlee(p);
-        defend(p);
-        release(p);
+        // every human empire (LAN games have several); the sim must not depend on which one is local
+        for (int i = 0, n = w.factions.size(); i < n; i++) {
+            Faction p = w.factions.get(i);
+            if (!p.isPlayer() || p.eliminated || !p.autoDefense) continue;
+            harvestersFlee(p);
+            defend(p);
+            release(p);
+        }
     }
 
     /** Rough fighting strength from toughness and damage output (works for pirates, which have no build cost). */
@@ -46,8 +49,7 @@ public class AutoDefense {
     }
 
     private static boolean hostile(Faction me, Unit e) {
-        return !e.dead && e.owner != me && e.armed()
-                && (e.owner.kind == Faction.Kind.RIVAL || e.owner.kind == Faction.Kind.PIRATES);
+        return !e.dead && me.hostileTo(e.owner) && e.armed() && e.owner.kind != Faction.Kind.NATIVES;
     }
 
     // ------------------------------------------------------------------ defend bases
@@ -59,7 +61,7 @@ public class AutoDefense {
             if (u.dead) continue;
             if (u.owner == p) {
                 if (u.cls == ShipClass.MOTHERSHIP || (u.cls.isBuilding() && u.cls != ShipClass.TURRET)) assets.add(u);
-            } else if (hostile(p, u) && !u.s.stationary && w.canSee(p, u)) threats.add(u);
+            } else if (hostile(p, u) && !u.cls.isBuilding() && w.canSee(p, u)) threats.add(u);
         }
         // keep only threats close to one of our bases
         threats.removeIf(e -> {
@@ -94,8 +96,8 @@ public class AutoDefense {
         if (have >= need) return;
         tmp.clear();
         for (Unit u : w.units) {
-            if (u.dead || u.owner != p || !u.cls.isWarship() || !u.armed() || u.cls == ShipClass.MENDER) continue;
-            if (u.order != Order.IDLE || u.autoTask || u.retreating || u.hp < u.maxHp() * 0.3f) continue;
+            if (u.dead || u.owner != p || !u.cls.isWarship() || !u.armed() || u.cls == ShipClass.DEFENDER) continue; // Defenders never leave their orbit
+            if (u.order != Order.IDLE || u.autoTask || u.retreating || u.formation != 0 || u.hp < u.maxHp() * 0.3f) continue;
             if (u.dist(x, y) > RESPONSE_RANGE) continue;
             tmp.add(u);
         }
@@ -141,7 +143,7 @@ public class AutoDefense {
      */
     public void retreats() {
         for (Unit u : w.units) {
-            if (u.dead || !u.owner.isMajor() || !u.cls.isWarship() || u.cls == ShipClass.MENDER) continue;
+            if (u.dead || !u.owner.isMajor() || !u.cls.isWarship() || u.cls == ShipClass.DEFENDER) continue;
             float frac = u.hp / u.maxHp();
             if (frac >= Unit.RETREAT_DONE) u.retreatOverridden = false;
             if (u.retreating) {

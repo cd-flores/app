@@ -271,7 +271,7 @@ class SimulationTest {
         Unit m = waitFor(w, p, ShipClass.MENDER, 1);
         assertEquals(s[0], m.x, 1f, "built at the clicked spot");
         assertEquals(s[1], m.y, 1f);
-        assertTrue(m.s.stationary && m.cls.isBuilding(), "a station, not a ship");
+        assertTrue(m.cls.isStation() && m.cls.isBuilding(), "a station, not a ship");
         assertFalse(m.cls.isWarship());
         assertEquals(0, ShipClass.MENDER.s.pop, "no housing");
         // it heals several damaged allies at once
@@ -585,15 +585,15 @@ class SimulationTest {
     }
 
     @Test
-    void factoryAndHubMoveAsSlowlyAsTheMothership() {
+    void stationsCrawlAtHalfTheMothershipSpeed() {
         World w = newWorld(33, 1);
         Faction p = w.player;
         p.energy = p.metal = 5000;
         Unit fac = buildFactory(w, p);
         Unit hub = w.spawn(ShipClass.HUB, p, p.mothership.x - 400, p.mothership.y - 400);
         w.flushPending();
-        assertEquals(p.mothership.speed(), fac.speed(), 0.01);
-        assertEquals(p.mothership.speed(), hub.speed(), 0.01);
+        assertEquals(p.mothership.speed() / 2f, fac.speed(), 0.01);
+        assertEquals(p.mothership.speed() / 2f, hub.speed(), 0.01);
         assertFalse(fac.cls.isWarship(), "not part of the army (Ctrl+A, auto-defense)");
         assertTrue(fac.cls.isBuilding());
         float x0 = fac.x;
@@ -601,7 +601,7 @@ class SimulationTest {
         assertNull(w.production.enqueue(fac, ShipClass.WISP), "still builds while moving");
         run(w, 10);
         float moved = fac.x - x0;
-        assertTrue(moved > 200 && moved < 30 * 10 + 20, "crawls: moved " + moved);
+        assertTrue(moved > 100 && moved < 15 * 10 + 20, "crawls at half speed: moved " + moved);
         int wisps = 0;
         for (Unit u : w.units) if (!u.dead && u.owner == p && u.cls == ShipClass.WISP) wisps++;
         assertTrue(wisps >= 2, "wisp delivered on the move");

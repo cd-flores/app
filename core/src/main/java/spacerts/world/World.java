@@ -8,6 +8,8 @@ import spacerts.systems.ConstructionSystem;
 import spacerts.systems.EconomySystem;
 import spacerts.systems.MovementSystem;
 import spacerts.systems.ProductionSystem;
+import spacerts.systems.StationRally;
+import spacerts.systems.TacticsSystem;
 import spacerts.systems.ThreatDirector;
 import spacerts.systems.UnitBehavior;
 import spacerts.units.ShipClass;
@@ -22,16 +24,17 @@ import java.util.Random;
 public class World {
     /** Housing the mothership provides on its own. */
     public static final int BASE_HOUSING = 35;
+    /** Brood Swarm: Broodlings released by a destroyed Hive. */
+    public static final int BROODLINGS = 5;
     public static final Color WHITE = new Color(1, 1, 1, 1);
     public static final Color ALERT = new Color(1f, 0.4f, 0.35f, 1f);
     public static final Color GOOD = new Color(0.45f, 1f, 0.55f, 1f);
     public static final Color INFO = new Color(0.7f, 0.85f, 1f, 1f);
 
-    private static final String[] RIVAL_NAMES = {"Krell Dominion", "Ashen Covenant", "Veyra Collective"};
-    private static final Color[] RIVAL_COLORS = {
-            new Color(1f, 0.33f, 0.3f, 1f), new Color(1f, 0.68f, 0.2f, 1f), new Color(0.85f, 0.42f, 1f, 1f)};
-
     public final long seed;
+    /** How the game was set up (mode, slots, teams); identical on every machine of a LAN game except localSlot. */
+    public final GameSetup setup;
+    /** Number of empires besides the first slot (0 = Campaign). */
     public final int rivalCount;
     public final Difficulty difficulty;
     public final Random rng;
@@ -40,7 +43,12 @@ public class World {
     public float time;
 
     public final List<Faction> factions = new ArrayList<>();
-    public final Faction player, natives, pirates;
+    /**
+     * The empire played on this machine. Only HUD, fog rendering and messages may depend on it: in LAN games every
+     * machine has a different one, so simulation logic must treat all human empires alike.
+     */
+    public final Faction player;
+    public final Faction natives, pirates;
     public final List<Body> bodies = new ArrayList<>();
     public final List<Unit> units = new ArrayList<>();
     private final List<Unit> pending = new ArrayList<>();
@@ -59,6 +67,8 @@ public class World {
     public final ThreatDirector threats;
     public final ConstructionSystem construction;
     public final AutoDefense autoDefense;
+    public final StationRally rally;
+    public final TacticsSystem tactics;
     /** Hive conquest: hex control, hex income, the frontier. */
     public final spacerts.systems.ConquestSystem conquest;
 
@@ -74,18 +84,34 @@ public class World {
         this(seed, rivals, Difficulty.NORMAL);
     }
 
+    /** The classic setup: one human plus `rivals` bots (0 rivals = the Campaign). */
     public World(long seed, int rivals, Difficulty difficulty) {
-        this.difficulty = difficulty != null ? difficulty : Difficulty.NORMAL;
-        this.seed = seed;
-        this.rivalCount = Math.max(0, Math.min(3, rivals));
+        this(rivals <= 0 ? GameSetup.campaign(seed, difficulty != null ? difficulty : Difficulty.NORMAL)
+                : GameSetup.skirmish(seed, rivals, difficulty != null ? difficulty : Difficulty.NORMAL));
+    }
+
+    public World(GameSetup setup) {
+        this.setup = setup;
+        this.difficulty = setup.difficulty != null ? setup.difficulty : Difficulty.NORMAL;
+        this.seed = setup.seed;
+        boolean campaign = setup.mode == GameSetup.Mode.CAMPAIGN;
+        int slots = campaign ? 1 : Math.max(1, Math.min(GameSetup.MAX_SLOTS, setup.slots.size()));
+        this.rivalCount = campaign ? 0 : slots - 1;
         this.rng = new Random(seed * 31 + 7);
         this.loot = new Random(seed * 131 + 17);
-        this.galaxy = rivalCount == 0 ? Galaxy.hive() : Galaxy.classic();
+        this.galaxy = campaign ? Galaxy.hive() : Galaxy.classic();
         // small cells: separation and weapon queries are short-range, and clumped fleets stay cheap
         this.hash = new SpatialHash(galaxy.width, galaxy.height, galaxy.hive ? 400f : 150f);
-        player = add(new Faction(0, "Your Empire", new Color(0.3f, 0.8f, 1f, 1f), Faction.Kind.PLAYER));
-        for (int i = 0; i < rivalCount; i++)
-            add(new Faction(factions.size(), RIVAL_NAMES[i], RIVAL_COLORS[i], Faction.Kind.RIVAL));
+        Faction local = null;
+        for (int i = 0; i < slots; i++) {
+            GameSetup.Slot s = setup.slots.get(i);
+            Color c = GameSetup.COLORS[Math.floorMod(s.colorIndex, GameSetup.COLORS.length)];
+            Faction f = add(new Faction(factions.size(), s.name, c, s.human ? Faction.Kind.PLAYER : Faction.Kind.RIVAL));
+            f.team = campaign ? 0 : s.team;
+            f.difficulty = s.botDifficulty != null ? s.botDifficulty : Difficulty.NORMAL;
+            if (i == setup.localSlot) local = f;
+        }
+        player = local != null ? local : factions.get(0);
         natives = add(new Faction(factions.size(), "Natives", new Color(0.55f, 0.9f, 0.45f, 1f), Faction.Kind.NATIVES));
         pirates = add(new Faction(factions.size(), "Pirates", new Color(0.78f, 0.78f, 0.72f, 1f), Faction.Kind.PIRATES));
 
@@ -97,6 +123,8 @@ public class World {
         threats = new ThreatDirector(this);
         construction = new ConstructionSystem(this);
         autoDefense = new AutoDefense(this);
+        rally = new StationRally(this);
+        tactics = new TacticsSystem(this);
         conquest = new spacerts.systems.ConquestSystem(this);
         for (Faction f : factions) if (f.kind == Faction.Kind.RIVAL) f.ai = new RivalAI(this, f);
     }
@@ -107,9 +135,18 @@ public class World {
         return f;
     }
 
-    /** Pirates-only mode: no rival empires, the Hive galaxy, pirate strongholds. */
+    /** Campaign (the pirates-only mode): no rival empires, the Hive galaxy, pirate strongholds. */
     public boolean piratesOnly() {
-        return rivalCount == 0;
+        return setup.mode == GameSetup.Mode.CAMPAIGN;
+    }
+
+    /** Hands a human empire to a bot (a LAN player left the game). */
+    public void handToBot(Faction f) {
+        if (f.kind != Faction.Kind.PLAYER) return;
+        f.kind = Faction.Kind.RIVAL;
+        f.difficulty = Difficulty.NORMAL;
+        f.ai = new RivalAI(this, f);
+        announce(f.name + " left the game - a bot takes over their empire.", INFO);
     }
 
     public StarSystem systemAt(float x, float y) {
@@ -136,6 +173,9 @@ public class World {
         for (Faction f : factions) if (f.ai != null && !f.eliminated) f.ai.update(dt);
         autoDefense.update(dt);
         conquest.update(dt);
+
+        rally.update(); // Rally Stations: formation slots around each Mothership
+        tactics.update(dt); // battle tactics: formations form up, march and fight
 
         // focus-fire bookkeeping: how many units are shooting at each target
         for (int i = 0, n = units.size(); i < n; i++) units.get(i).targetedBy = 0;
@@ -175,9 +215,14 @@ public class World {
             p.ttl -= dt;
             if (p.ttl <= 0) it.remove();
         }
-        while (messages.size() > 40) messages.remove(0);
+        while (messages.size() > 80) messages.remove(0); // room for the cheat list and chat history
 
         computePopulation();
+        for (int i = 0, n = factions.size(); i < n; i++) { // smoothed repair spending for the HUD
+            Faction f = factions.get(i);
+            if (dt > 0) f.repairSpend += (f.repairSpentTick / dt - f.repairSpend) * Math.min(1f, dt * 0.5f);
+            f.repairSpentTick = 0;
+        }
     }
 
     public void flushPending() {
@@ -212,12 +257,19 @@ public class World {
             f.docks.clear();
             if (f.vision != null) f.vision.beginFrame();
         }
+        boolean teams = hasTeams();
         for (Unit u : units) {
             if (u.dead) continue;
             Faction f = u.owner;
             if (f.vision != null) {
                 float vis = u.vision() * (galaxy.hive ? systemAt(u.x, u.y).archetype.visionMult() : 1f); // nebulae are murky
-                f.vision.reveal(u.x, u.y, vis + (u.cls == ShipClass.COLONY ? u.radius : 0));
+                vis += u.cls == ShipClass.COLONY ? u.radius : 0;
+                f.vision.reveal(u.x, u.y, vis);
+                if (teams && f.team != 0) // allies share vision
+                    for (int i = 0, n = factions.size(); i < n; i++) {
+                        Faction a = factions.get(i);
+                        if (a != f && a.vision != null && a.team == f.team) a.vision.reveal(u.x, u.y, vis);
+                    }
             }
             if (u.s.detector) f.detectors.add(u);
             if (u.s.aura > 0) f.auras.add(u);
@@ -226,18 +278,34 @@ public class World {
                     || u.cls == ShipClass.REFINERY)
                 f.docks.add(u);
         }
-        for (Ping p : pings) if (p.owner.vision != null) p.owner.vision.reveal(p.x, p.y, p.r);
+        for (int i = 0, n = factions.size(); i < n; i++) { // ISeeDeadPeople cheat: no fog
+            Faction f = factions.get(i);
+            if (f.noFog && f.vision != null) f.vision.revealAll();
+        }
+        for (Ping p : pings)
+            for (int i = 0, n = factions.size(); i < n; i++) {
+                Faction a = factions.get(i);
+                if (a.vision != null && (a == p.owner || (teams && !a.hostileTo(p.owner)))) a.vision.reveal(p.x, p.y, p.r);
+            }
+    }
+
+    /** True when any empire is on a team (alliances are in play). */
+    public boolean hasTeams() {
+        for (int i = 0, n = factions.size(); i < n; i++) if (factions.get(i).team != 0) return true;
+        return false;
     }
 
     public void computePopulation() {
         for (Faction f : factions) {
             f.popUsed = 0;
             f.popCap = (f.mothership != null && !f.mothership.dead) ? BASE_HOUSING : 0;
+            f.upkeepPoints = 0;
         }
         for (Unit u : units) {
             if (u.dead) continue;
             Faction f = u.owner;
             if (!u.s.internal) f.popUsed += u.s.pop;
+            if (!u.s.internal) f.upkeepPoints += u.cls.isStation() ? EconomySystem.UPKEEP_PER_STATION : u.s.pop;
             if (u.cls == ShipClass.COLONY && u.home != null) f.popCap += (int) u.home.housing(f);
             if (u.queue != null)
                 for (ShipClass c : u.queue.items) f.popUsed += c.s.pop * c.s.squad;
@@ -280,8 +348,14 @@ public class World {
 
     /** The Ascension Gate is complete: the galaxy is won. Raids drop to a trickle; play can continue. */
     public boolean ascended;
+    /** Cheats: ItVexesMe (no victory) and DayLightSavings (raid timer frozen). */
+    public boolean noVictory, raidsFrozen;
 
     public void ascend(Faction f, Unit gate) {
+        if (noVictory) { // ItVexesMe cheat
+            notify(f, "The Ascension Gate stands, but victory is disabled (ItVexesMe).", INFO);
+            return;
+        }
         ascended = true;
         ring(gate.x, gate.y, 2400, GOOD, 2.5f);
         announce("THE ASCENSION GATE IS COMPLETE! The pirate clans are broken - the galaxy is yours. (Keep playing if you like.)", GOOD);
@@ -358,7 +432,9 @@ public class World {
         }
         switch (u.cls) {
             case MOTHERSHIP:
-                eliminate(f);
+                if (f.noDefeat && !f.eliminated) // StrengthAndHonor cheat: the empire fights on without its flagship
+                    notify(f, "Strength and Honor: your Mothership fell, but your empire fights on.", ALERT);
+                else eliminate(f);
                 break;
             case PIRATE_BASE:
                 if (!u.silent) PirateBases.onBaseDestroyed(this, u);
@@ -400,6 +476,19 @@ public class World {
                     }
                 }
                 break;
+            case HIVE: // Brood Swarm: a destroyed carrier releases Broodlings that keep fighting
+                if (!u.silent && f.has(spacerts.research.Tech.BROOD_SWARM)) {
+                    for (int i = 0; i < BROODLINGS; i++) {
+                        double a = Math.PI * 2 * i / BROODLINGS + u.angle;
+                        Unit b = spawn(ShipClass.BROODLING, f, u.x + (float) Math.cos(a) * 30, u.y + (float) Math.sin(a) * 30);
+                        b.angle = (float) a;
+                        b.retreatOff = true; // they fight to the end
+                        if (u.target != null && !u.target.dead) b.command(spacerts.units.Order.ATTACK_MOVE, u.target.x, u.target.y);
+                    }
+                    ring(u.x, u.y, u.radius * 3f, f.color, 0.5f);
+                    notify(f, "Brood Swarm: your fallen Hive released " + BROODLINGS + " Broodlings.", INFO);
+                }
+                break;
             case OUTPOST:
                 if (u.home != null && u.home.outpost == u) {
                     u.home.outpost = null;
@@ -433,15 +522,30 @@ public class World {
         if (f == player) {
             gameOver = true;
             announce("Your mothership has been destroyed.", ALERT);
-        } else if (f.kind == Faction.Kind.RIVAL) {
-            announce(f.name + " has been eliminated!", GOOD);
-            boolean anyLeft = false;
-            for (Faction o : factions) if (o.kind == Faction.Kind.RIVAL && !o.eliminated) anyLeft = true;
-            if (!anyLeft && !victoryAnnounced) {
-                victoryAnnounced = true;
-                announce("All rival empires destroyed! The galaxy is yours... but the pirates keep coming.", GOOD);
-            }
+        } else if (f.isMajor()) {
+            announce(f.name + " has been eliminated!", f.hostileTo(player) ? GOOD : ALERT);
         }
+        if (!f.isMajor() || victoryAnnounced || piratesOnly() || noVictory) return; // ItVexesMe cheat: no victory
+        // victory: the empires still standing are all on one side
+        Faction first = null;
+        boolean oneSide = true;
+        for (Faction o : factions) {
+            if (!o.isMajor() || o.eliminated) continue;
+            if (first == null) first = o;
+            else if (first.hostileTo(o)) oneSide = false;
+        }
+        if (first == null || !oneSide) return;
+        victoryAnnounced = true;
+        String who = first.team != 0 && countTeam(first.team) > 1 ? "Team " + first.team : first.name;
+        if (!player.eliminated && !player.hostileTo(first))
+            announce("VICTORY! " + who + " rules the galaxy... but the pirates keep coming.", GOOD);
+        else announce(who + " has won the game.", ALERT);
+    }
+
+    private int countTeam(int team) {
+        int n = 0;
+        for (Faction o : factions) if (o.isMajor() && o.team == team) n++;
+        return n;
     }
 
     public void colonize(Body p, Faction f) {
@@ -476,17 +580,68 @@ public class World {
     // ------------------------------------------------------------------ queries
 
     public boolean canSee(Faction f, Unit t) {
-        if (t.owner == f) return true;
+        if (t.owner == f || (f.team != 0 && t.owner.team == f.team)) return true;
         if (f.vision != null && !f.vision.isVisible(t.x, t.y)) return false;
         return !t.cloaked(time) || isDetected(t, f);
     }
 
     public boolean isDetected(Unit t, Faction f) {
         for (Ping p : pings)
-            if (p.owner == f && t.dist(p.x, p.y) < p.r) return true;
+            if (!f.hostileTo(p.owner) && t.dist(p.x, p.y) < p.r) return true;
+        if (detects(f, t)) return true;
+        if (f.team != 0) // allied detectors count too
+            for (int i = 0, n = factions.size(); i < n; i++) {
+                Faction a = factions.get(i);
+                if (a != f && a.team == f.team && detects(a, t)) return true;
+            }
+        return false;
+    }
+
+    private static boolean detects(Faction f, Unit t) {
         for (Unit d : f.detectors)
             if (!d.dead && t.dist(d) < d.vision() * 0.7f) return true;
         return false;
+    }
+
+    // ------------------------------------------------------------------ paid repairs
+
+    /** A full repair from zero hull costs this fraction of the ship's metal price. */
+    public static final float REPAIR_COST = 0.5f;
+    /** Metal price used for the Mothership and other units that cost no metal. */
+    public static final float REPAIR_BASIS_FREE = 1000f;
+
+    /** Metal per point of hull repaired on u (0 for units whose repairs are free). */
+    public static float repairPrice(Unit u) {
+        if (!u.owner.isMajor() || u.s.internal || u.s.stationary) return 0; // ships, stations and the Mothership pay
+        float basis = u.s.metal > 0 ? u.s.metal / (float) u.s.squad : REPAIR_BASIS_FREE;
+        return REPAIR_COST * basis / Math.max(1f, u.maxHp());
+    }
+
+    /**
+     * Repairs up to `amount` hull on u, paid in metal by its owner. Only what the owner can afford is repaired;
+     * at 0 metal repairs stop (with an occasional warning). Returns the hull actually restored.
+     */
+    public float repair(Unit u, float amount) {
+        amount = Math.min(amount, u.maxHp() - u.hp);
+        if (amount <= 0) return 0;
+        float price = repairPrice(u);
+        Faction f = u.owner;
+        if (price > 0) {
+            float cost = amount * price;
+            if (f.metal < cost) {
+                amount = (float) Math.max(0, f.metal) / price;
+                cost = amount * price;
+                if (time - f.lastRepairAlert > 30f) {
+                    f.lastRepairAlert = time;
+                    notify(f, "Repairs halted: out of metal.", ALERT);
+                }
+            }
+            if (amount <= 0) return 0;
+            f.metal -= cost;
+            f.repairSpentTick += cost;
+        }
+        u.hp += amount;
+        return amount;
     }
 
     /** Nearest colony, factory, shipyard or mothership of f within max (edge distance), or null. */

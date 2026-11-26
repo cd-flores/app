@@ -23,7 +23,8 @@ public class Spec {
     public boolean hiveOnly;
     public boolean piercing, mustStop, cloak, stationary, harvester, colonizer, surveyor, producer, internal, detector;
     public int drones, squad = 1, multi = 1, cap;
-    public Ability ability = Ability.NONE;
+    /** Activated skills, each on its own hotkey (see Ability). */
+    public Ability[] abilities = {};
     public Tech tech;
 
     public Spec(String name, String desc) {
@@ -77,7 +78,16 @@ public class Spec {
     public Spec squad(int n) { squad = n; return this; }
     public Spec multi(int n) { multi = n; return this; }
     public Spec cap(int n) { cap = n; return this; }
-    public Spec ability(Ability a) { ability = a; return this; }
+    public Spec ability(Ability a) {
+        abilities = java.util.Arrays.copyOf(abilities, abilities.length + 1);
+        abilities[abilities.length - 1] = a;
+        return this;
+    }
+
+    public boolean has(Ability a) {
+        for (Ability b : abilities) if (b == a) return true;
+        return false;
+    }
     public Spec tech(Tech t) { tech = t; return this; }
 
     public boolean hasRare() {

@@ -20,6 +20,7 @@ public class EconomySystem {
     }
 
     public void update(float dt) {
+        payUpkeep(dt);
         for (int i = 0, n = w.units.size(); i < n; i++) {
             Unit u = w.units.get(i);
             if (u.dead) continue;
@@ -34,9 +35,11 @@ public class EconomySystem {
                 u.owner.metal += rate * dt;
             }
         }
+        float decay = 1f;
+        for (int i = 0, n = w.factions.size(); i < n; i++) if (w.factions.get(i).fastDecay) decay = 20f;
         for (int i = 0, n = w.bodies.size(); i < n; i++) {
             Body b = w.bodies.get(i);
-            if (b.isWreck() && !b.dead && (b.life -= dt) <= 0) b.dead = true; // drifted away
+            if (b.isWreck() && !b.dead && (b.life -= dt * decay) <= 0) b.dead = true; // drifted away (IocainePowder: fast)
         }
         asteroidTimer -= dt;
         if (asteroidTimer <= 0) {
@@ -51,6 +54,33 @@ public class EconomySystem {
                 float chance = !w.galaxy.hive || s.archetype == spacerts.world.SystemArchetype.BELT ? SHOWER_CHANCE_BELT : SHOWER_CHANCE;
                 if (events.nextFloat() < chance) asteroidShower(s);
             }
+        }
+    }
+
+    // ------------------------------------------------------------------ upkeep (Warcraft 3 style)
+
+    /** Each station weighs this much in upkeep; ships weigh their housing. */
+    public static final int UPKEEP_PER_STATION = 4;
+    /** Upkeep tiers: free up to UPKEEP_LOW points, then the tier's rate applies to every point. */
+    public static final int UPKEEP_LOW = 40, UPKEEP_HIGH = 100;
+    public static final float UPKEEP_LOW_RATE = 0.03f, UPKEEP_HIGH_RATE = 0.06f;
+
+    /** 0 = no upkeep, 1 = low, 2 = high. */
+    public static int upkeepTier(Faction f) {
+        return f.upkeepPoints > UPKEEP_HIGH ? 2 : f.upkeepPoints > UPKEEP_LOW ? 1 : 0;
+    }
+
+    /** Energy per second f pays for its ships and stations. */
+    public static float upkeep(Faction f) {
+        int t = upkeepTier(f);
+        return f.upkeepPoints * (t == 2 ? UPKEEP_HIGH_RATE : t == 1 ? UPKEEP_LOW_RATE : 0f);
+    }
+
+    private void payUpkeep(float dt) {
+        for (int i = 0, n = w.factions.size(); i < n; i++) {
+            Faction f = w.factions.get(i);
+            if (!f.isMajor() || f.eliminated) continue;
+            f.energy = Math.max(0, f.energy - upkeep(f) * dt);
         }
     }
 
@@ -308,7 +338,7 @@ public class EconomySystem {
     }
 
     private float incomeMult(Faction f) {
-        return f.kind == Faction.Kind.RIVAL ? w.difficulty.rivalIncome : 1f;
+        return f.kind == Faction.Kind.RIVAL ? f.difficulty.rivalIncome : 1f;
     }
 
     private void goal(Unit u, float x, float y, float stop) {

@@ -87,7 +87,8 @@ public final class GalaxyGenerator {
     static void finish(World w) {
         w.flushPending();
         w.galaxy.indexBodies(w.bodies);
-        for (Unit u : w.units) if (u.s.harvester) w.economy.autoAssign(u);
+        // bots sit still for their first three minutes (RivalAI.START_DELAY); their harvesters wait too
+        for (Unit u : w.units) if (u.s.harvester && u.owner.kind != Faction.Kind.RIVAL) w.economy.autoAssign(u);
         w.computePopulation();
         w.updateVision();
         w.conquest.recount();
@@ -104,7 +105,7 @@ public final class GalaxyGenerator {
         wisp.anchorX = wisp.x;
         wisp.anchorY = wisp.y;
         for (int l = 0; l < 3; l++) w.spawn(ShipClass.LANCER, f, sx - 100 + l * 25, sy - 100);
-        if (f == w.player && w.difficulty.playerBonus) { // Easy: a head start
+        if (f.isPlayer() && w.difficulty.playerBonus) { // Easy: a head start for human empires
             f.energy += 400;
             f.metal += 400;
             for (int l = 0; l < 3; l++) w.spawn(ShipClass.LANCER, f, sx - 100 + l * 25, sy - 130);

@@ -26,7 +26,7 @@ public class ProductionSystem {
             Unit p = w.units.get(i);
             if (p.dead || p.queue == null || p.queue.isEmpty()) continue;
             ShipClass c = p.queue.items.get(0);
-            p.queue.progress += dt * p.owner.buildMult() * tierSpeed(p) / c.s.buildTime;
+            p.queue.progress += dt * p.owner.buildMult() * tierSpeed(p) * (p.owner.warpTen ? 10f : 1f) / c.s.buildTime; // WarpTen cheat
             if (p.queue.progress >= 1f) {
                 p.queue.removeAt(0);
                 p.queue.progress = 0;
@@ -36,7 +36,7 @@ public class ProductionSystem {
         for (Faction f : w.factions) {
             if (f.researching == null || f.eliminated) continue;
             if (f.hub == null || f.hub.dead) continue;
-            f.researchProgress += dt * researchSpeed(f) / f.researching.time;
+            f.researchProgress += dt * researchSpeed(f) * (f.fastResearch ? 10f : 1f) / f.researching.time; // WhoIsJohnGalt cheat
             if (f.researchProgress >= 1f) complete(f, f.researching);
         }
     }
@@ -58,6 +58,20 @@ public class ProductionSystem {
             w.ring(p.x, p.y, p.radius * 2.5f, new com.badlogic.gdx.graphics.Color(1f, 0.9f, 0.5f, 1f), 0.8f);
             w.notify(f, "Stellar Refinement level " + f.refinement + "/" + Faction.REFINEMENT_MAX + ": mining and energy +"
                     + Math.round(Faction.REFINEMENT_STEP * 100 * f.refinement) + "%.", World.GOOD);
+            return;
+        }
+        if (c.isCommandUnlock()) { // Command Center: a tactic or tactic upgrade, nothing spawns
+            spacerts.units.Tactic t = c.unlocksTactic();
+            spacerts.units.TacticUpgrade up = c.unlocksUpgrade();
+            if (t != null) {
+                f.tactics.add(t);
+                if (f.activeTactic == null) f.activeTactic = t;
+                w.notify(f, "Tactic unlocked: " + t.title + ". Select it at the Command Center; press Y and attack to use it.", World.GOOD);
+            } else if (up != null) {
+                f.tacticUps.add(up);
+                w.notify(f, "Tactic upgrade ready: " + up.title + ".", World.GOOD);
+            }
+            w.ring(p.x, p.y, p.radius * 2.5f, f.color, 0.8f);
             return;
         }
         if (c.isUpgrade()) { // tier upgrades raise the producer instead of spawning anything
@@ -84,11 +98,18 @@ public class ProductionSystem {
         float gx = p.hasRally ? p.rallyX : f.flagX, gy = p.hasRally ? p.rallyY : f.flagY;
         boolean rally = p.hasRally || toFlag;
         float baseA = rally ? (float) Math.atan2(gy - p.y, gx - p.x) : w.rng.nextFloat() * 6.283f;
+        // Replenish: a replacement for a lost formation ship goes straight to the last tactical attack
+        boolean replenishing = f.replenish[c.ordinal()] > 0 && f.hasTacticTarget;
+        if (f.replenish[c.ordinal()] > 0) f.replenish[c.ordinal()]--;
         for (int i = 0; i < c.s.squad; i++) {
             float a = baseA + (i - (c.s.squad - 1) / 2f) * 0.35f;
             float sx = p.x + (float) Math.cos(a) * (p.radius + c.s.radius + 6);
             float sy = p.y + (float) Math.sin(a) * (p.radius + c.s.radius + 6);
             Unit u = w.spawn(c, f, sx, sy);
+            if (replenishing) {
+                u.command(Order.ATTACK_MOVE, f.tacticX + (float) Math.cos(u.id) * 40, f.tacticY + (float) Math.sin(u.id) * 40);
+                continue;
+            }
             if (c.s.harvester && !p.hasRally) {
                 w.economy.autoAssign(u);
             } else if (toFlag) {
@@ -109,14 +130,22 @@ public class ProductionSystem {
         boolean listed = false;
         for (ShipClass b : p.cls.buildList()) if (b == c) listed = true;
         if (!listed) return p.s.name + " can't build " + c.s.name;
-        if (c.s.tech != null && !f.has(c.s.tech)) return "Requires research: " + c.s.tech.title;
+        if (c.s.tech != null && !f.has(c.s.tech) && !f.synergy) return "Requires research: " + c.s.tech.title;
+        if (c.isCommandUnlock()) {
+            spacerts.units.Tactic t = c.unlocksTactic();
+            spacerts.units.TacticUpgrade up = c.unlocksUpgrade();
+            if ((t != null && f.tactics.contains(t)) || (up != null && f.has(up))) return "Already unlocked";
+            if (up != null && up.needs != null && !f.tactics.contains(up.needs) && !f.synergy) return "Requires the " + up.needs.title + " tactic";
+            if (up != null && up.needs == null && f.tactics.isEmpty() && !f.synergy) return "Requires a tactic";
+            if (w.queued(f, c) > 0) return "Already in progress";
+        }
         if (c.isUpgrade()) {
             if (p.tier >= c.s.upgradeTo) return "Already tier " + roman(p.tier);
             if (p.tier < c.s.upgradeTo - 1) return "Upgrade to tier " + roman(c.s.upgradeTo - 1) + " first";
             for (ShipClass q : p.queue.items) if (q.isUpgrade()) return "Upgrade already in progress";
         }
-        if (p.cls == ShipClass.FACTORY && c.s.factoryTier > p.tier) return "Requires a tier " + roman(c.s.factoryTier) + " Ship Factory";
-        if (p.cls == ShipClass.MOTHERSHIP && !c.isUpgrade() && c.s.msTier > p.tier)
+        if (p.cls == ShipClass.FACTORY && c.s.factoryTier > p.tier && !f.synergy) return "Requires a tier " + roman(c.s.factoryTier) + " Ship Station";
+        if (p.cls == ShipClass.MOTHERSHIP && !c.isUpgrade() && c.s.msTier > p.tier && !f.synergy)
             return "Requires Mothership tier " + roman(c.s.msTier);
         if (c == ShipClass.STELLAR_REFINEMENT) {
             if (p.tier < 3) return "Requires Mothership tier III";
@@ -134,7 +163,7 @@ public class ProductionSystem {
             if (w.count(f, c) + w.queued(f, c) >= cap) return c.s.name + " limit reached (" + cap + ")";
         }
         int needPop = c.s.pop * c.s.squad;
-        if (needPop > 0 && f.popUsed + needPop > f.popCap) return "Not enough housing - colonize habitable planets";
+        if (needPop > 0 && f.popUsed + needPop > f.popCap && !f.noHousing) return "Not enough housing - colonize habitable planets";
         if (p.queue.items.size() >= ProductionQueue.MAX) return "Queue full";
         return null;
     }
@@ -204,9 +233,9 @@ public class ProductionSystem {
         if (f.has(t)) return "Already researched";
         if (f.hub == null || f.hub.dead) return "Requires a Research Hub";
         if (f.researching != null) return "Already researching " + f.researching.title;
-        if (f.hubTier() < t.tier) return "Requires Hub tier " + t.tier;
+        if (f.hubTier() < t.tier && !f.synergy) return "Requires Hub tier " + t.tier;
         Tech pre = t.prereq();
-        if (pre != null && !f.has(pre)) return "Requires " + pre.title;
+        if (pre != null && !f.has(pre) && !f.synergy) return "Requires " + pre.title;
         return null;
     }
 
@@ -230,6 +259,11 @@ public class ProductionSystem {
     }
 
     public void complete(Faction f, Tech t) {
+        complete(f, t, true);
+    }
+
+    /** Finishes research t for f (also used by the SharpAndShiny cheat, without the message). */
+    public void complete(Faction f, Tech t, boolean announce) {
         List<Unit> mine = new ArrayList<>();
         List<Float> oldMax = new ArrayList<>();
         for (Unit u : w.units)
@@ -247,7 +281,7 @@ public class ProductionSystem {
         }
         if (t == Tech.PLANET_TURRETS)
             for (Unit u : mine) if (u.cls == ShipClass.COLONY && u.home != null) w.spawnPlanetTurrets(u.home, f);
-        w.notify(f, "Research complete: " + t.title + " - " + t.desc, World.GOOD);
+        if (announce) w.notify(f, "Research complete: " + t.title + " - " + t.desc, World.GOOD);
     }
 
     /** Text such as "120E 80M 2 Pyro". */

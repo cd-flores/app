@@ -6,6 +6,8 @@ import com.badlogic.gdx.InputAdapter;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.math.Vector3;
+import spacerts.net.Command;
+import spacerts.net.CommandExecutor;
 import spacerts.screens.GameScreen;
 import spacerts.units.Ability;
 import spacerts.units.Order;
@@ -85,7 +87,12 @@ public class GameInput extends InputAdapter {
 
     // ------------------------------------------------------------------ camera
 
+    /** Edge panning: within EDGE pixels of a window edge, or up to EDGE_OUTSIDE past it (title bar, taskbar). */
+    private static final float EDGE = 8, EDGE_OUTSIDE = 90;
+    private final float[] cursor = new float[2];
+
     public void update(float dt) {
+        if (gs.showHelp || chatOpen) return; // the tutorial and the chat box use the keyboard
         OrthographicCamera cam = gs.cam;
         float speed = 900f * cam.zoom * dt;
         float dx = 0, dy = 0;
@@ -93,13 +100,26 @@ public class GameInput extends InputAdapter {
         if (Gdx.input.isKeyPressed(Input.Keys.S) || Gdx.input.isKeyPressed(Input.Keys.DOWN)) dy -= speed;
         if (Gdx.input.isKeyPressed(Input.Keys.A) && !ctrl() || Gdx.input.isKeyPressed(Input.Keys.LEFT)) dx -= speed;
         if (Gdx.input.isKeyPressed(Input.Keys.D) || Gdx.input.isKeyPressed(Input.Keys.RIGHT)) dx += speed;
-        int mx = Gdx.input.getX(), my = Gdx.input.getY();
-        int W = Gdx.graphics.getWidth(), H = Gdx.graphics.getHeight();
-        if (!dragging && !panning && !minimapDrag && Gdx.input.isCursorCatched() == false && mx >= 0 && my >= 0 && mx < W && my < H) {
-            if (mx < 4) dx -= speed;
-            if (mx > W - 5) dx += speed;
-            if (my < 4) dy += speed;
-            if (my > H - 5) dy -= speed;
+        if (!dragging && !panning && !minimapDrag && !Gdx.input.isCursorCatched()) {
+            int W = Gdx.graphics.getWidth(), H = Gdx.graphics.getHeight();
+            float mx, my;
+            float band; // how far outside the window the cursor may be and still pan (title bar, taskbar)
+            if (spacerts.SpaceRtsGame.cursor != null && spacerts.SpaceRtsGame.cursor.read(cursor)) {
+                mx = cursor[0];
+                my = cursor[1];
+                band = EDGE_OUTSIDE;
+            } else { // no desktop probe: libGDX only knows positions inside the window
+                mx = Gdx.input.getX();
+                my = Gdx.input.getY();
+                band = 0;
+            }
+            boolean nearX = mx > -band && mx < W + band, nearY = my > -band && my < H + band;
+            if (nearX && nearY) {
+                if (mx < EDGE) dx -= speed;
+                if (mx > W - 1 - EDGE) dx += speed;
+                if (my < EDGE) dy += speed;
+                if (my > H - 1 - EDGE) dy -= speed;
+            }
         }
         // panning stays inside the system being viewed; gates, the minimap and the galaxy map move between systems
         StarSystem view = w().systemAt(cam.position.x, cam.position.y);
@@ -133,7 +153,7 @@ public class GameInput extends InputAdapter {
     public boolean touchDown(int sx, int sy, int pointer, int button) {
         curX = sx;
         curY = sy;
-        if (gs.showHelp || gs.menuOpen) {
+        if (gs.showHelp || gs.menuOpen || gs.confirmSurrender) { // overlays only take clicks on their buttons
             if (button == Input.Buttons.LEFT) gs.hud.click(sx, sy);
             return true;
         }
@@ -387,12 +407,9 @@ public class GameInput extends InputAdapter {
     private void confirmPlacement(float wx, float wy) {
         World w = w();
         if (placingFlag) {
-            w.player.hasFlag = true;
-            w.player.flagX = w.clampX(wx, wy);
-            w.player.flagY = w.clampY(wx, wy);
             placingFlag = false;
             w.ring(wx, wy, 60 * gs.cam.zoom, w.player.color, 0.5f);
-            w.notify(w.player, "Rally flag placed. New warships will gather here (Shift+F removes it).", World.GOOD);
+            gs.issue(new Command(Command.Type.SET_FLAG, 0).at(wx, wy));
             return;
         }
         ShipClass c = placing;
@@ -403,11 +420,14 @@ public class GameInput extends InputAdapter {
             cancelPlacement();
             return;
         }
-        String err = w.construction.order(h, c, body, wx, wy);
+        // check here so a bad spot keeps placement mode; extractors and planet upgrades snap to their body when built
+        String err = c.isExtractor() || c.isPlanetUpgrade() ? null : w.construction.blocker(h, c, body, wx, wy);
+        if (err == null) err = w.player.missing(c.s.energy, c.s.metal, c.s.rare);
         if (err != null) {
             w.notify(w.player, err, World.ALERT);
             return; // stay in placement mode so the player can pick another spot
         }
+        gs.issue(new Command(Command.Type.BUILD, 0).target(h).cls(c).body(body).at(wx, wy));
         w.ring(c.targetsBody() && body != null ? body.x : wx, c.targetsBody() && body != null ? body.y : wy,
                 60 * gs.cam.zoom, MOVE_C, 0.35f);
         if (!shift()) placing = null; // hold Shift to queue more with other selected harvesters
@@ -415,27 +435,19 @@ public class GameInput extends InputAdapter {
 
     // ------------------------------------------------------------------ orders
 
+    /** Right-click: resolves what was clicked here, the simulation applies it (CommandExecutor.order). */
     private void issueOrder(float wx, float wy, boolean attackMove) {
         World w = w();
-        List<Unit> movers = new ArrayList<>();
-        boolean any = false;
+        List<Unit> mine = new ArrayList<>();
+        boolean movers = false;
         for (Unit u : selected) {
             if (u.dead || u.owner != w.player) continue;
-            any = true;
-            if (u.s.stationary || (u.queue != null && shift())) { // Shift+right-click on a producer: set its rally point
-                if (u.queue != null) {
-                    u.hasRally = true;
-                    u.rallyX = wx;
-                    u.rallyY = wy;
-                }
-                continue;
-            }
-            u.clearAuto(); // the player takes over from automation
-            u.fleeTimer = 0;
-            movers.add(u);
+            mine.add(u);
+            if (!u.s.stationary && !(u.queue != null && shift())) movers = true;
         }
-        if (!any) return;
+        if (mine.isEmpty()) return;
         Unit enemy = pickUnit(wx, wy, false);
+        if (enemy != null && !w.player.hostileTo(enemy.owner)) enemy = null; // allies: just move there
         Body body = w.bodyAt(wx, wy, 10 * gs.cam.zoom);
         if (body != null && !w.player.vision.isExplored(body.x, body.y)) body = null;
         if (enemy == null && body != null && body.isGate() && body.link != null) {
@@ -445,42 +457,15 @@ public class GameInput extends InputAdapter {
             wy = e[1];
             body = null;
         }
-
-        int n = movers.size();
-        int cols = Math.max(1, (int) Math.ceil(Math.sqrt(n)));
-        int rows = (n + cols - 1) / cols;
-        float spacing = 34;
-        for (Unit u : movers) spacing = Math.max(spacing, u.radius * 2.6f);
-        boolean attacked = false;
-        for (int i = 0; i < n; i++) {
-            Unit u = movers.get(i);
-            if (enemy != null && u.armed()) {
-                u.order = Order.ATTACK;
-                u.target = enemy;
-                u.body = null;
-                attacked = true;
-                continue;
-            }
-            if (body != null) {
-                if (u.s.harvester && body.harvestable()) {
-                    w.economy.assign(u, body);
-                    continue;
-                }
-                if (u.s.colonizer && body.habitable()) {
-                    u.command(Order.COLONIZE, body.x, body.y);
-                    u.body = body;
-                    continue;
-                }
-                if (u.s.surveyor && body.type != null && body.type.rare != null) {
-                    u.command(Order.SURVEY, body.x, body.y);
-                    u.body = body;
-                    continue;
-                }
-            }
-            int col = i % cols, row = i / cols;
-            float ox = (col - (cols - 1) / 2f) * spacing, oy = ((rows - 1) / 2f - row) * spacing;
-            u.command(attackMove ? Order.ATTACK_MOVE : Order.MOVE, wx + ox, wy + oy);
+        if (gs.tacticsOn && (attackMove || enemy != null) && w.player.activeTactic != null && !shift()) { // tactical attack: form up, march, fight
+            gs.issue(new Command(Command.Type.TACTIC_ATTACK, 0).units(mine).at(wx, wy).target(enemy));
+            w.ring(wx, wy, 60 * gs.cam.zoom, ATTACK_C, 0.5f);
+            return;
         }
+        Command c = new Command(Command.Type.ORDER, 0).units(mine).at(wx, wy).target(enemy).body(body).arg(attackMove ? 1 : 0);
+        c.shift = shift();
+        gs.issue(c);
+        boolean attacked = enemy != null && movers;
         w.ring(wx, wy, 45 * gs.cam.zoom, attacked || attackMove ? ATTACK_C : MOVE_C, 0.35f);
     }
 
@@ -489,8 +474,24 @@ public class GameInput extends InputAdapter {
     @Override
     public boolean keyDown(int key) {
         World w = w();
+        if (chatOpen) { // typing a chat line: every key belongs to the chat box
+            if (key == Input.Keys.ENTER || key == Input.Keys.NUMPAD_ENTER) sendChat();
+            else if (key == Input.Keys.ESCAPE) closeChat();
+            else if (key == Input.Keys.BACKSPACE && chatText.length() > 0) chatText.setLength(chatText.length() - 1);
+            else if (key == Input.Keys.PAGE_UP) chatScroll += 4; // scroll the chat history (the Hud clamps it)
+            else if (key == Input.Keys.PAGE_DOWN) chatScroll = Math.max(0, chatScroll - 4);
+            return true;
+        }
+        if (gs.confirmSurrender) {
+            if (key == Input.Keys.ESCAPE) gs.confirmSurrender = false;
+            return true;
+        }
         if (gs.showHelp) {
-            if (key == Input.Keys.F1 || key == Input.Keys.ESCAPE || key == Input.Keys.ENTER || key == Input.Keys.SPACE) gs.showHelp = false;
+            // paginated tutorial: arrows / A D / Enter turn the page, Esc or F1 closes
+            if (key == Input.Keys.F1 || key == Input.Keys.ESCAPE) gs.showHelp = false;
+            else if (key == Input.Keys.RIGHT || key == Input.Keys.D || key == Input.Keys.ENTER || key == Input.Keys.SPACE || key == Input.Keys.PAGE_DOWN)
+                gs.hud.helpPage(+1);
+            else if (key == Input.Keys.LEFT || key == Input.Keys.A || key == Input.Keys.PAGE_UP) gs.hud.helpPage(-1);
             return true;
         }
         if (w.gameOver && key == Input.Keys.ENTER) {
@@ -504,6 +505,22 @@ public class GameInput extends InputAdapter {
             else if (key == Input.Keys.F9) gs.load();
             return true;
         }
+        if (key == Input.Keys.SLASH) { // chat; Shift+/ talks to your team only
+            openChat(shift());
+            return true;
+        }
+        if (key == Input.Keys.Y) {
+            toggleTactics();
+            return true;
+        }
+        if (key == Input.Keys.K) {
+            cycleTargeting();
+            return true;
+        }
+        if (key == Input.Keys.FORWARD_DEL) {
+            destroySelected();
+            return true;
+        }
         for (int i = 0; i < BUILD_KEYS.length; i++) {
             if (key == BUILD_KEYS[i]) {
                 Body colony = selectedColony();
@@ -514,10 +531,7 @@ public class GameInput extends InputAdapter {
                 Unit p = activeProducer();
                 if (p != null) {
                     ShipClass[] list = p.cls.buildList();
-                    if (i < list.length) {
-                        String err = w.production.enqueue(p, list[i]);
-                        if (err != null) w.notify(w.player, err, World.ALERT);
-                    }
+                    if (i < list.length) enqueue(p, list[i], false);
                 } else {
                     Unit h = activeBuilder();
                     if (h != null) {
@@ -528,34 +542,39 @@ public class GameInput extends InputAdapter {
                 return true;
             }
         }
+        Ability skill = Ability.forKey(key); // every activated skill has its own key
+        if (skill != null && !ctrl()) {
+            useAbility(skill);
+            return true;
+        }
         switch (key) {
             case Input.Keys.F1: gs.showHelp = true; return true;
-            case Input.Keys.SPACE: gs.paused = !gs.paused; return true;
-            case Input.Keys.LEFT_BRACKET: gs.speed = Math.max(1, gs.speed - 1); return true;
-            case Input.Keys.RIGHT_BRACKET: gs.speed = Math.min(4, gs.speed + 1); return true;
+            case Input.Keys.SPACE: gs.togglePause(); return true;
+            case Input.Keys.LEFT_BRACKET: gs.changeSpeed(-1); return true;
+            case Input.Keys.RIGHT_BRACKET: gs.changeSpeed(1); return true;
             case Input.Keys.F5: gs.save(); return true;
             case Input.Keys.F9: gs.load(); return true;
             case Input.Keys.F:
                 if (shift()) {
-                    w.player.hasFlag = false;
                     placingFlag = false;
-                    w.notify(w.player, "Rally flag removed.", World.INFO);
+                    gs.issue(new Command(Command.Type.CLEAR_FLAG, 0));
                 } else {
                     placing = null;
                     placingFlag = true;
                     w.notify(w.player, "Left-click (map or minimap) to place the rally flag. Right-click or Esc cancels.", World.INFO);
                 }
                 return true;
+            case Input.Keys.V:
+                toggleRally();
+                return true;
             case Input.Keys.G:
-                w.player.autoDefense = !w.player.autoDefense;
-                w.notify(w.player, "Auto-defense " + (w.player.autoDefense ? "ON: idle ships defend your bases and harvesters flee raids."
-                        : "OFF: your units only do what you tell them."), World.INFO);
+                toggleAutoDefense();
                 return true;
             case Input.Keys.F2: {
                 List<Unit> facs = new ArrayList<>();
                 for (Unit u : w.units) if (!u.dead && u.owner == w.player && u.cls == ShipClass.FACTORY) facs.add(u);
                 if (facs.isEmpty()) {
-                    w.notify(w.player, "No Ship Factory yet - select a Harvester and build one (key 1).", World.INFO);
+                    w.notify(w.player, "No Ship Station yet - select a Harvester and build one (key 1).", World.INFO);
                     return true;
                 }
                 Unit fac = facs.get(factoryCycle++ % facs.size());
@@ -576,26 +595,23 @@ public class GameInput extends InputAdapter {
                 else if (!selected.isEmpty() || inspectUnit != null || inspectBody != null) reset();
                 else gs.menuOpen = true;
                 return true;
-            case Input.Keys.Q: useAbilities(); return true;
-            case Input.Keys.U: { // queue the next tier upgrade on the selected Mothership / Ship Factory
+            case Input.Keys.U: { // queue the next tier upgrade on the selected Mothership / Ship Station
                 Unit p = activeProducer();
                 if (p == null) return true;
                 for (ShipClass c : p.cls.buildList())
                     if (c.isUpgrade() && c.s.upgradeTo == p.tier + 1) {
-                        String err = w.production.enqueue(p, c);
-                        w.notify(w.player, err != null ? err : c.s.name + " started.", err != null ? World.ALERT : World.INFO);
+                        enqueue(p, c, true);
                         return true;
                     }
                 w.notify(w.player, p.s.name + " can't be upgraded further.", World.INFO);
                 return true;
             }
             case Input.Keys.R: toggleRetreat(); return true;
-            case Input.Keys.X:
-                for (Unit u : selected) if (u.owner == w.player && !u.s.stationary) {
-                    u.idle();
-                    u.clearAuto();
-                }
+            case Input.Keys.X: {
+                List<Unit> mine = ownSelected();
+                if (!mine.isEmpty()) gs.issue(new Command(Command.Type.STOP, 0).units(mine));
                 return true;
+            }
             case Input.Keys.H: {
                 Unit ms = w.player.mothership;
                 if (ms != null && !ms.dead) {
@@ -655,54 +671,148 @@ public class GameInput extends InputAdapter {
 
     /** Sends the nearest free harvester to build a turret or shield upgrade on one of the player's colonies. */
     public void upgradePlanet(Body colony, ShipClass c) {
-        World w = w();
-        String why = w.construction.baseBlocker(w.player, c);
-        if (why == null) why = w.player.missing(c.s.energy, c.s.metal, c.s.rare);
-        Unit h = null;
-        if (why == null) {
-            h = w.construction.nearestFreeBuilder(w.player, colony);
-            if (h == null) why = "No free harvester to build the upgrade";
-        }
-        if (why == null) why = w.construction.order(h, c, colony, colony.x, colony.y);
-        if (why != null) {
-            w.notify(w.player, why, World.ALERT);
-            return;
-        }
-        w.notify(w.player, "A harvester is on its way to build a " + c.s.name + " on " + colony.name + ".", World.INFO);
-        w.ring(colony.x, colony.y, colony.radius * 2f, MOVE_C, 0.35f);
+        gs.issue(new Command(Command.Type.UPGRADE_PLANET, 0).cls(c).body(colony));
     }
 
     /** R: switches auto-retreat on or off for the selected warships (all on unless every one is already on). */
     public void toggleRetreat() {
         World w = w();
-        boolean anyOff = false, any = false;
+        boolean anyOff = false;
+        List<Unit> ships = new ArrayList<>();
         for (Unit u : selected)
             if (!u.dead && u.owner == w.player && u.cls.isWarship()) {
-                any = true;
+                ships.add(u);
                 if (u.retreatOff) anyOff = true;
             }
-        if (!any) return;
-        for (Unit u : selected)
-            if (!u.dead && u.owner == w.player && u.cls.isWarship()) u.retreatOff = !anyOff;
-        w.notify(w.player, anyOff ? "Auto-retreat ON: these ships pull back to repair below 25% hull."
-                : "Auto-retreat OFF: these ships fight to the end.", World.INFO);
+        if (ships.isEmpty()) return;
+        gs.issue(new Command(Command.Type.RETREAT, 0).units(ships).arg(anyOff ? 1 : 0));
     }
 
-    private void useAbilities() {
-        World w = w();
-        String firstErr = null;
-        boolean anyOk = false;
-        java.util.Set<ShipClass> used = new java.util.HashSet<>();
-        for (Unit u : selected) {
-            if (u.dead || u.owner != w.player || u.s.ability == Ability.NONE) continue;
-            // Ping: one per keypress is enough
-            if (u.s.ability == Ability.PING && used.contains(u.cls)) continue;
-            String err = w.behavior.useAbility(u);
-            if (err == null) {
-                anyOk = true;
-                used.add(u.cls);
-            } else if (firstErr == null) firstErr = err;
+    /** V or the Mothership panel button: stations form hex rings around the Mothership and move with it. */
+    public void toggleRally() {
+        gs.issue(new Command(Command.Type.RALLY_STATIONS, 0).arg(w().player.rallyStations ? 0 : 1));
+    }
+
+    /** G or the HUD button: idle ships defend bases, harvesters flee raids. */
+    public void toggleAutoDefense() {
+        gs.issue(new Command(Command.Type.AUTO_DEFENSE, 0).arg(w().player.autoDefense ? 0 : 1));
+    }
+
+    /** Queues c at producer p; `announce` reports a successful start (tier upgrades). */
+    public void enqueue(Unit p, ShipClass c, boolean announce) {
+        gs.issue(new Command(Command.Type.ENQUEUE, 0).target(p).cls(c).arg(announce ? 1 : 0));
+    }
+
+    private List<Unit> ownSelected() {
+        List<Unit> out = new ArrayList<>();
+        for (Unit u : selected) if (!u.dead && u.owner == w().player) out.add(u);
+        return out;
+    }
+
+    // ------------------------------------------------------------------ chat
+
+    public boolean chatOpen, chatTeam;
+    /** Lines scrolled back in the chat history (Page Up / Page Down). */
+    public int chatScroll;
+    public final StringBuilder chatText = new StringBuilder();
+    /** The / (or ?) typed by the key that opened the chat is not part of the message. */
+    private boolean skipTyped;
+
+    public void openChat(boolean team) {
+        chatScroll = 0;
+        chatOpen = true;
+        chatTeam = team;
+        chatText.setLength(0);
+        skipTyped = true;
+    }
+
+    public void closeChat() {
+        chatOpen = false;
+        chatText.setLength(0);
+    }
+
+    private void sendChat() {
+        String s = chatText.toString().trim();
+        boolean team = chatTeam;
+        if (s.startsWith("/t ")) {
+            team = true;
+            s = s.substring(3);
         }
-        if (!anyOk && firstErr != null) w.notify(w.player, firstErr, World.INFO);
+        closeChat();
+        World w = w();
+        if (spacerts.world.Cheats.isListRequest(s)) { // the cheat list only prints on this machine
+            spacerts.world.Cheats.list(w, w.player);
+            return;
+        }
+        if (!team && spacerts.world.Cheats.isCheat(s) && spacerts.world.Cheats.allowed(w)) { // cheat codes never become chat
+            Command c = new Command(Command.Type.CHEAT, 0);
+            c.name = s;
+            gs.issue(c);
+            return;
+        }
+        if (CommandExecutor.cleanChat(s) == null) return;
+        Command c = new Command(Command.Type.CHAT, 0).arg(team ? 1 : 0);
+        c.name = s;
+        gs.issue(c);
+    }
+
+    @Override
+    public boolean keyTyped(char ch) {
+        if (!chatOpen) return false;
+        if (skipTyped) {
+            skipTyped = false;
+            if (ch == '/' || ch == '?') return true;
+        }
+        if (ch >= 32 && ch < 127 && chatText.length() < CommandExecutor.CHAT_MAX) chatText.append(ch);
+        return true;
+    }
+
+    // ------------------------------------------------------------------ tactics & targeting
+
+    /** Y or the tactic button: attack orders use the active tactic while on. */
+    public void toggleTactics() {
+        spacerts.world.Faction p = w().player;
+        if (p.activeTactic == null) {
+            w().notify(p, "No tactic yet - build a Command Center (Harvester) and unlock one there.", World.INFO);
+            return;
+        }
+        gs.tacticsOn = !gs.tacticsOn;
+        w().notify(p, "Tactic " + p.activeTactic.title + (gs.tacticsOn ? " ON: attack orders form up, march and fight together." : " OFF."), World.INFO);
+    }
+
+    /** K or the targeting button: the selected warships switch to the next targeting mode. */
+    public void cycleTargeting() {
+        List<Unit> ships = new ArrayList<>();
+        for (Unit u : ownSelected()) if (u.cls.isWarship() || (u.armed() && !u.s.stationary)) ships.add(u);
+        if (ships.isEmpty()) return;
+        spacerts.units.Targeting next = ships.get(0).targeting.next();
+        gs.issue(new Command(Command.Type.SET_TARGETING, 0).units(ships).arg(next.ordinal()));
+    }
+
+    // ------------------------------------------------------------------ destroy / surrender
+
+    /** Delete or the HUD button: scuttle the selection; a lone Mothership asks to surrender instead. */
+    public void destroySelected() {
+        List<Unit> mine = new ArrayList<>();
+        boolean ms = false;
+        for (Unit u : ownSelected()) {
+            if (CommandExecutor.destroyable(u)) mine.add(u);
+            else if (u.cls == ShipClass.MOTHERSHIP) ms = true;
+        }
+        if (!mine.isEmpty()) gs.issue(new Command(Command.Type.DESTROY, 0).units(mine));
+        else if (ms) gs.confirmSurrender = true;
+    }
+
+    /** Confirmed in the popup: the empire gives up. */
+    public void surrender() {
+        gs.confirmSurrender = false;
+        gs.issue(new Command(Command.Type.SURRENDER, 0));
+    }
+
+    /** Uses skill a on every selected ship that has it (its hotkey or its HUD button). */
+    public void useAbility(Ability a) {
+        List<Unit> mine = new ArrayList<>();
+        for (Unit u : ownSelected()) if (u.s.has(a)) mine.add(u);
+        if (!mine.isEmpty()) gs.issue(new Command(Command.Type.ABILITY, 0).units(mine).arg(a.ordinal()));
     }
 }

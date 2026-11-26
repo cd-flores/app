@@ -11,6 +11,7 @@ import spacerts.units.ShipClass;
 import spacerts.units.Unit;
 import spacerts.world.Body;
 import spacerts.world.Faction;
+import spacerts.world.GameSetup;
 import spacerts.world.PlanetType;
 import spacerts.world.StarSystem;
 import spacerts.world.SystemArchetype;
@@ -42,7 +43,17 @@ public final class SaveManager {
         public float pirateRespawn;
         /** Hive hex radius the save was made with (0 in old saves = the original 3600 layout). */
         public float hexR;
-        public boolean ascended;
+        public boolean ascended, noVictory, raidsFrozen;
+        /** Game setup (newer saves): mode, empire slots with teams and bot difficulties, the local slot. */
+        public String mode;
+        public SlotData[] slots;
+        public int localSlot;
+    }
+
+    public static class SlotData {
+        public boolean human;
+        public String name, botDifficulty;
+        public int team, color;
     }
 
     public static class FactionData {
@@ -51,7 +62,14 @@ public final class SaveManager {
         public int[] rare;
         public String[] techs;
         public String researching;
-        public boolean eliminated, hasFlag, autoDefenseOff;
+        public boolean eliminated, hasFlag, autoDefenseOff, rallyStations;
+        /** Cheat state (single player). */
+        public boolean cheatsUnlocked, cheatsUsed, godMode, noFog, warpTen, fastResearch, synergy, noHousing, noCooldowns, fastDecay, noDefeat;
+        /** Command Center: unlocked tactics and upgrades (by name), the active tactic, the last tactical target. */
+        public String[] tactics, tacticUps;
+        public String activeTactic;
+        public boolean hasTacticTarget;
+        public float tacticX, tacticY;
         public boolean[] found;
         public int refinement;
         public float flagX, flagY;
@@ -75,7 +93,11 @@ public final class SaveManager {
         public String[] queue;
         /** What was paid for each queued item: energy, metal, energy, metal, ... (older saves: missing = base price). */
         public int[] queuePaid;
-        public float x, y, hp, shield, angle, tx, ty, anchorX, anchorY, cargo, work, progress, rallyX, rallyY, radius, abilityCd;
+        public float x, y, hp, shield, angle, tx, ty, anchorX, anchorY, cargo, work, progress, rallyX, rallyY, radius, abilityCd, ghostTimer;
+        /** Cooldown left for each ability (by ordinal); old saves only have abilityCd. */
+        public float[] abilityCds;
+        /** Targeting mode name (older saves: nearest). */
+        public String targeting;
         public boolean cargoEnergy, hasRally, leaving;
         public boolean retreating, retreatOff, autoTask;
         public float homeX, homeY;
@@ -112,6 +134,21 @@ public final class SaveManager {
         d.pirateRespawn = w.pirateRespawn;
         d.hexR = w.galaxy.hive ? spacerts.world.Galaxy.HEX_R : 0;
         d.ascended = w.ascended;
+        d.noVictory = w.noVictory;
+        d.raidsFrozen = w.raidsFrozen;
+        d.mode = w.setup.mode.name();
+        d.localSlot = w.factions.indexOf(w.player);
+        d.slots = new SlotData[w.rivalCount + 1];
+        for (int i = 0; i < d.slots.length; i++) {
+            Faction f = w.factions.get(i);
+            SlotData sd = new SlotData();
+            sd.human = f.isPlayer(); // a LAN player handed to a bot stays a bot
+            sd.name = f.name;
+            sd.botDifficulty = f.difficulty.name();
+            sd.team = f.team;
+            sd.color = i < w.setup.slots.size() ? w.setup.slots.get(i).colorIndex : i;
+            d.slots[i] = sd;
+        }
         int ns = w.galaxy.systems.size();
         d.sysNames = new String[ns];
         d.sysArch = new String[ns];
@@ -136,6 +173,28 @@ public final class SaveManager {
             fd.eliminated = f.eliminated;
             fd.hasFlag = f.hasFlag;
             fd.autoDefenseOff = !f.autoDefense;
+            fd.rallyStations = f.rallyStations;
+            fd.cheatsUnlocked = f.cheatsUnlocked;
+            fd.cheatsUsed = f.cheatsUsed;
+            fd.godMode = f.godMode;
+            fd.noFog = f.noFog;
+            fd.warpTen = f.warpTen;
+            fd.fastResearch = f.fastResearch;
+            fd.synergy = f.synergy;
+            fd.noHousing = f.noHousing;
+            fd.noCooldowns = f.noCooldowns;
+            fd.fastDecay = f.fastDecay;
+            fd.noDefeat = f.noDefeat;
+            fd.tactics = new String[f.tactics.size()];
+            int ti = 0;
+            for (spacerts.units.Tactic t : f.tactics) fd.tactics[ti++] = t.name();
+            fd.tacticUps = new String[f.tacticUps.size()];
+            ti = 0;
+            for (spacerts.units.TacticUpgrade t : f.tacticUps) fd.tacticUps[ti++] = t.name();
+            fd.activeTactic = f.activeTactic != null ? f.activeTactic.name() : null;
+            fd.hasTacticTarget = f.hasTacticTarget;
+            fd.tacticX = f.tacticX;
+            fd.tacticY = f.tacticY;
             fd.flagX = f.flagX;
             fd.flagY = f.flagY;
             fd.found = f.found.clone();
@@ -202,7 +261,9 @@ public final class SaveManager {
             ud.cargoEnergy = u.cargoEnergy;
             ud.harvestState = u.harvestState;
             ud.work = u.work;
-            ud.abilityCd = u.abilityCd;
+            ud.abilityCds = u.abilityCds.clone();
+            ud.ghostTimer = u.ghostTimer;
+            ud.targeting = u.targeting.name();
             ud.leaving = u.leaving;
             ud.retreating = u.retreating;
             ud.retreatOff = u.retreatOff;
@@ -255,6 +316,28 @@ public final class SaveManager {
         return fromJson(file().readString());
     }
 
+    /** The game setup a save was made with; older saves only know the rival count. */
+    private static GameSetup setupOf(SaveData d) {
+        spacerts.world.Difficulty diff = spacerts.world.Difficulty.parse(d.difficulty);
+        if (d.slots == null || d.slots.length == 0) {
+            GameSetup g = d.rivals == 0 ? GameSetup.campaign(d.seed, diff) : GameSetup.skirmish(d.seed, d.rivals, diff);
+            if (d.rivals == 0) g.slots.get(0).name = "Your Empire";
+            return g;
+        }
+        GameSetup g = new GameSetup();
+        g.mode = "CAMPAIGN".equals(d.mode) ? GameSetup.Mode.CAMPAIGN : GameSetup.Mode.MULTIPLAYER;
+        g.seed = d.seed;
+        g.difficulty = diff;
+        for (SlotData sd : d.slots) {
+            GameSetup.Slot s = new GameSetup.Slot(sd.human, sd.name != null ? sd.name : "Empire", sd.color);
+            s.botDifficulty = spacerts.world.Difficulty.parse(sd.botDifficulty);
+            s.team = sd.team;
+            g.slots.add(s);
+        }
+        g.localSlot = Math.max(0, Math.min(g.slots.size() - 1, d.localSlot));
+        return g;
+    }
+
     public static World fromJson(String text) {
         Json json = new Json();
         json.setIgnoreUnknownFields(true);
@@ -263,7 +346,7 @@ public final class SaveManager {
 
         if (d.rivals == 0 && d.hexR != spacerts.world.Galaxy.HEX_R) // positions would land in the wrong hexes
             throw new IllegalStateException("This save is from the older, smaller Hive layout and can't be loaded");
-        World w = new World(d.seed, d.rivals, spacerts.world.Difficulty.parse(d.difficulty));
+        World w = new World(setupOf(d));
         w.time = d.time;
         w.threats.nextWave = d.nextWave;
         w.threats.wave = d.wave;
@@ -282,6 +365,29 @@ public final class SaveManager {
             f.eliminated = fd.eliminated;
             f.hasFlag = fd.hasFlag;
             f.autoDefense = !fd.autoDefenseOff;
+            f.rallyStations = fd.rallyStations;
+            f.cheatsUnlocked = fd.cheatsUnlocked;
+            f.cheatsUsed = fd.cheatsUsed;
+            f.godMode = fd.godMode;
+            f.noFog = fd.noFog;
+            f.warpTen = fd.warpTen;
+            f.fastResearch = fd.fastResearch;
+            f.synergy = fd.synergy;
+            f.noHousing = fd.noHousing;
+            f.noCooldowns = fd.noCooldowns;
+            f.fastDecay = fd.fastDecay;
+            f.noDefeat = fd.noDefeat;
+            if (fd.tactics != null)
+                for (String s : fd.tactics)
+                    try { f.tactics.add(spacerts.units.Tactic.valueOf(s)); } catch (IllegalArgumentException ignored) {}
+            if (fd.tacticUps != null)
+                for (String s : fd.tacticUps)
+                    try { f.tacticUps.add(spacerts.units.TacticUpgrade.valueOf(s)); } catch (IllegalArgumentException ignored) {}
+            if (fd.activeTactic != null)
+                try { f.activeTactic = spacerts.units.Tactic.valueOf(fd.activeTactic); } catch (IllegalArgumentException ignored) {}
+            f.hasTacticTarget = fd.hasTacticTarget;
+            f.tacticX = fd.tacticX;
+            f.tacticY = fd.tacticY;
             f.flagX = fd.flagX;
             f.flagY = fd.flagY;
             if (fd.found != null) for (int k = 0; k < fd.found.length && k < f.found.length; k++) f.found[k] = fd.found[k];
@@ -315,6 +421,8 @@ public final class SaveManager {
         // systems: names, archetypes, gate links
         w.pirateRespawn = d.pirateRespawn;
         w.ascended = d.ascended;
+        w.noVictory = d.noVictory;
+        w.raidsFrozen = d.raidsFrozen;
         if (d.sysNames != null)
             for (int i = 0; i < d.sysNames.length && i < w.galaxy.systems.size(); i++) {
                 StarSystem s = w.galaxy.systems.get(i);
@@ -349,7 +457,11 @@ public final class SaveManager {
             u.cargoEnergy = ud.cargoEnergy;
             u.harvestState = ud.harvestState;
             u.work = ud.work;
-            u.abilityCd = ud.abilityCd;
+            if (ud.abilityCds != null) System.arraycopy(ud.abilityCds, 0, u.abilityCds, 0, Math.min(ud.abilityCds.length, u.abilityCds.length));
+            else if (u.s.abilities.length > 0) u.abilityCds[u.s.abilities[0].ordinal()] = ud.abilityCd; // older save
+            u.ghostTimer = ud.ghostTimer;
+            if (ud.targeting != null)
+                try { u.targeting = spacerts.units.Targeting.valueOf(ud.targeting); } catch (IllegalArgumentException ignored) {}
             u.leaving = ud.leaving;
             u.retreating = ud.retreating;
             u.retreatOff = ud.retreatOff;

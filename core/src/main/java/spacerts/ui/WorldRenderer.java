@@ -230,6 +230,25 @@ public class WorldRenderer {
                 sr.setColor(SEL);
                 sr.rect(u.rallyX - 3 * zoom, u.rallyY - 3 * zoom, 6 * zoom, 6 * zoom);
             }
+            if (u.cls == ShipClass.DEFENDER && u.owner.mothership != null && !u.owner.mothership.dead) { // its orbit
+                Unit ms = u.owner.mothership;
+                sr.setColor(SEL.r, SEL.g, SEL.b, 0.12f);
+                float orb = w.behavior.defenderOrbit(u.owner);
+                ring(sr, ms.x, ms.y, orb, 1.2f * zoom, segs(orb));
+            }
+            if (u.formation != 0) { // tactic formation: its slot while forming up / marching
+                spacerts.systems.TacticsSystem.Formation fm = w.tactics.formationOf(u);
+                if (fm != null && fm.state != spacerts.systems.TacticsSystem.State.ENGAGED)
+                    for (spacerts.systems.TacticsSystem.Member m : fm.members)
+                        if (m.u == u) {
+                            sr.setColor(1f, 0.85f, 0.45f, 0.35f);
+                            ring(sr, fm.slotX(m), fm.slotY(m), u.radius + 4, 1.2f * zoom, 16);
+                        }
+            }
+            if (u.rallied) { // its slot in the Mothership's formation
+                sr.setColor(SEL.r, SEL.g, SEL.b, 0.25f);
+                sr.rectLine(u.x, u.y, u.slotX, u.slotY, 1.2f * zoom);
+            }
             if (u.s.aura > 0) {
                 sr.setColor(SHIELD_C.r, SHIELD_C.g, SHIELD_C.b, 0.15f);
                 ring(sr, u.x, u.y, u.s.aura, 1.5f * zoom, 40);
@@ -510,7 +529,7 @@ public class WorldRenderer {
 
     private void drawUnit(ShapeRenderer sr, World w, Unit u) {
         Color oc = u.owner.color;
-        float alpha = u.s.cloak && u.cloaked(w.time) ? 0.35f : 1f;
+        float alpha = u.cloaked(w.time) ? 0.35f : 1f; // cloaked ships (Phantom, Ghost Drive) are drawn faint
         float r = u.radius;
         ux = u.x;
         uy = u.y;
@@ -866,6 +885,38 @@ public class WorldRenderer {
                 sr.setColor(u.overchargeTimer > 0 ? new Color(1f, 0.6f, 0.2f, 1f) : new Color(0.7f, 0.9f, 1f, 0.9f));
                 sr.circle(ux - uc * r * 0.55f, uy - us * r * 0.55f, r * 0.12f, 8);
                 break;
+            case COMMAND: { // command station: octagonal deck, a bridge tower and a sweeping radar boom
+                sr.setColor(oc.r * dark, oc.g * dark, oc.b * dark, alpha);
+                for (int i = 0; i < 8; i++) {
+                    float a0 = i * 0.7854f + 0.3927f, a1 = (i + 1) * 0.7854f + 0.3927f;
+                    tri(sr, 0, 0, (float) Math.cos(a0) * r, (float) Math.sin(a0) * r, (float) Math.cos(a1) * r, (float) Math.sin(a1) * r);
+                }
+                sr.setColor(oc.r, oc.g, oc.b, alpha);
+                sr.circle(u.x, u.y, r * 0.55f, segs(r * 0.55f));
+                sr.setColor(0.15f, 0.15f, 0.2f, 1f);
+                sr.circle(u.x, u.y, r * 0.3f, 12);
+                float ra = w.time * 1.4f;
+                sr.setColor(1f, 0.85f, 0.45f, 0.9f * alpha);
+                sr.rectLine(u.x, u.y, u.x + (float) Math.cos(ra) * r * 0.95f, u.y + (float) Math.sin(ra) * r * 0.95f, 2.5f);
+                sr.circle(u.x + (float) Math.cos(ra) * r * 0.95f, u.y + (float) Math.sin(ra) * r * 0.95f, r * 0.12f, 8);
+                break;
+            }
+            case DEFENDER: { // guardian: a broad hexagonal armour slab with a forward shield plate and twin turrets
+                sr.setColor(oc.r * dark, oc.g * dark, oc.b * dark, alpha);
+                for (int i = 0; i < 6; i++) {
+                    float a0 = i * 1.0472f, a1 = (i + 1) * 1.0472f;
+                    tri(sr, 0, 0, (float) Math.cos(a0) * r, (float) Math.sin(a0) * r, (float) Math.cos(a1) * r, (float) Math.sin(a1) * r);
+                }
+                sr.setColor(oc.r, oc.g, oc.b, alpha);
+                quad(sr, r * 1.1f, r * 0.75f, r * 0.75f, r * 0.75f, r * 0.75f, -r * 0.75f, r * 1.1f, -r * 0.75f);
+                quad(sr, r * 0.5f, r * 0.3f, -r * 0.6f, r * 0.45f, -r * 0.6f, -r * 0.45f, r * 0.5f, -r * 0.3f);
+                sr.setColor(0.18f, 0.18f, 0.24f, 1f);
+                for (int i = -1; i <= 1; i += 2)
+                    sr.circle(ux - us * i * r * 0.55f, uy + uc * i * r * 0.55f, r * 0.2f, 10);
+                sr.setColor(SHIELD_C.r, SHIELD_C.g, SHIELD_C.b, 0.35f * alpha);
+                quad(sr, r * 1.25f, r * 0.85f, r * 1.12f, r * 0.85f, r * 1.12f, -r * 0.85f, r * 1.25f, -r * 0.85f);
+                break;
+            }
             case HALCYON: // repair cruiser: rounded hull with a green cross and a soft heal field
                 sr.setColor(0.4f, 1f, 0.5f, 0.05f);
                 sr.circle(u.x, u.y, u.s.healRange, segs(u.s.healRange));

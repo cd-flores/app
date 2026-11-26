@@ -44,7 +44,11 @@ public class RivalAI {
         this.think = 1f + f.id * 0.37f;
     }
 
+    /** Bots sit completely still for the first three minutes of a game. */
+    public static final float START_DELAY = 180f;
+
     public void update(float dt) {
+        if (w.time < START_DELAY) return;
         think -= dt;
         if (think > 0) return;
         think = 1.5f;
@@ -279,11 +283,34 @@ public class RivalAI {
         return p;
     }
 
+    /** Warships alive (retreating ones too) plus warships waiting in production queues, counted per ship. */
+    public int warships() {
+        int n = 0;
+        for (Unit u : w.units) {
+            if (u.dead || u.owner != f) continue;
+            if (u.cls.isWarship()) n++;
+            if (u.queue != null)
+                for (ShipClass c : u.queue.items) if (c.isWarship()) n += c.s.squad;
+        }
+        return n;
+    }
+
+    /** True when the difficulty's ship cap stops this bot from building more warships. */
+    public boolean atShipCap() {
+        int cap = f.difficulty.shipCap;
+        return cap >= 0 && warships() >= cap;
+    }
+
     private void military(Unit ms) {
         if (f.energy < 250 && f.metal < 250) return;
+        if (atShipCap()) return;
         // keep housing free for a colony ship while there are worlds left to settle, or expansion stalls
         if (f.popCap - f.popUsed <= 4 && colonyShips.isEmpty() && colonies.size() < 14
                 && nearestColonizable(ms, new HashSet<>()) != null) return;
+        // Hard and Insane bots guard a tier II Mothership with up to 2 Defenders once they are rich
+        if (f.difficulty.ordinal() >= spacerts.world.Difficulty.HARD.ordinal() && ms.tier >= 2 && f.energy > 4000 && f.metal > 4500
+                && w.count(f, ShipClass.DEFENDER) + pending(ShipClass.DEFENDER) < 2 && ms.queue.items.size() < 3
+                && w.production.enqueue(ms, ShipClass.DEFENDER) == null) return;
         Unit p = leastBusy();
         if (p == null || p.queue.items.size() >= 3) return;
         // capital ship first when available
@@ -307,7 +334,7 @@ public class RivalAI {
 
     private void command(Unit ms) {
         float power = armyPower();
-        float threshold = (20 + w.time / 60f * 1.6f) * w.difficulty.assaultThreshold;
+        float threshold = (20 + w.time / 60f * 1.6f) * f.difficulty.assaultThreshold;
         spacerts.world.StarSystem home = w.systemAt(ms.x, ms.y);
         float rallyA = (float) Math.atan2(home.cy - ms.y, home.cx - ms.x);
         float rx = ms.x + (float) Math.cos(rallyA) * 350, ry = ms.y + (float) Math.sin(rallyA) * 350;
@@ -403,9 +430,9 @@ public class RivalAI {
         if (assaultUnit == null || !assaultUnit.owner.isPlayer()) return 0;
         Unit t = assaultUnit;
         String where = t.home != null ? t.home.name : t.s.name;
-        w.notify(w.player, f.name + " fleet (" + ships + " ships) is preparing to attack your " + where + "!", World.ALERT);
-        w.alert(t.x, t.y);
-        return w.difficulty.warningDelay;
+        w.notify(t.owner, f.name + " fleet (" + ships + " ships) is preparing to attack your " + where + "!", World.ALERT);
+        if (t.owner == w.player) w.alert(t.x, t.y);
+        return f.difficulty.warningDelay;
     }
 
     /** Picks the next assault target: a guarded planet nearby, or the closest enemy structure. */
@@ -424,21 +451,21 @@ public class RivalAI {
         Unit nearPlayer = null, nearRival = null;
         float dp = Float.MAX_VALUE, dr = Float.MAX_VALUE;
         for (Unit u : w.units) {
-            if (u.dead || u.owner == f || !u.owner.isMajor()) continue;
+            if (u.dead || !f.hostileTo(u.owner) || !u.owner.isMajor()) continue;
             if (!(u.cls.isBuilding() || u.cls == ShipClass.MOTHERSHIP)) continue;
             float d = ms.dist(u);
             if (u.owner.isPlayer()) {
                 // Easy: hit the player's colonies and outposts first; their Mothership only when nothing else is left
-                if (u.cls == ShipClass.MOTHERSHIP && w.difficulty == spacerts.world.Difficulty.EASY) d += 100000;
+                if (u.cls == ShipClass.MOTHERSHIP && f.difficulty == spacerts.world.Difficulty.EASY) d += 100000;
                 if (d < dp) { dp = d; nearPlayer = u; }
             } else if (d < dr) { dr = d; nearRival = u; }
         }
         Unit bestEnemy;
         if (nearPlayer != null && nearRival != null)
-            bestEnemy = w.rng.nextFloat() < w.difficulty.playerShare ? nearPlayer : nearRival;
+            bestEnemy = w.rng.nextFloat() < f.difficulty.playerShare ? nearPlayer : nearRival;
         else bestEnemy = nearPlayer != null ? nearPlayer : nearRival;
         // early game: only fight natives for planets; empires are fair game after the difficulty's first strike time
-        float first = w.difficulty.firstStrike;
+        float first = f.difficulty.firstStrike;
         if (w.time < first) bestEnemy = null;
         boolean preferPlanet = bestPlanet != null && (bestEnemy == null || w.time < first + 600 || w.rng.nextFloat() < 0.4f);
         if (preferPlanet) {

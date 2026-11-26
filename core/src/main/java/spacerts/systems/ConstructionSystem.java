@@ -21,14 +21,16 @@ public class ConstructionSystem {
 
     /** Reasons that don't depend on where the thing is built (tech, limits, housing), or null. */
     public String baseBlocker(Faction f, ShipClass c) {
-        if (c.s.tech != null && !f.has(c.s.tech)) return "Requires research";
+        if (c.s.tech != null && !f.has(c.s.tech) && !f.synergy) return "Requires research";
         if (c.s.hiveOnly && !w.galaxy.hive) return "Only in the Hive galaxy (pirates mode)";
-        if (c.s.msTier > f.msTier()) return "Requires Mothership tier " + ProductionSystem.roman(c.s.msTier);
+        if (c.s.msTier > f.msTier() && !f.synergy) return "Requires Mothership tier " + ProductionSystem.roman(c.s.msTier);
         if (c == ShipClass.HUB && ((f.hub != null && !f.hub.dead) || building(f, ShipClass.HUB, null) > 0))
             return "Only one Research Hub allowed";
+        if (c == ShipClass.COMMAND && (w.count(f, ShipClass.COMMAND) > 0 || building(f, ShipClass.COMMAND, null) > 0))
+            return "Only one Command Center";
         if (c == ShipClass.ASCENSION && (w.count(f, ShipClass.ASCENSION) > 0 || building(f, ShipClass.ASCENSION, null) > 0))
             return "Only one Ascension Gate";
-        if (c.s.pop > 0 && f.popUsed + c.s.pop > f.popCap) return "Not enough housing - colonize habitable planets";
+        if (c.s.pop > 0 && f.popUsed + c.s.pop > f.popCap && !f.noHousing) return "Not enough housing - colonize habitable planets";
         return null;
     }
 
@@ -205,7 +207,7 @@ public class ConstructionSystem {
             h.stopDist = range - 15;
             return;
         }
-        h.work += dt * f.buildMult() / c.s.buildTime;
+        h.work += dt * f.buildMult() * (f.warpTen ? 10f : 1f) / c.s.buildTime; // WarpTen cheat
         if (w.rng.nextFloat() < dt * 3f)
             w.beam(h.x, h.y, h.buildX + w.rng.nextFloat() * 30 - 15, h.buildY + w.rng.nextFloat() * 30 - 15, f.color, 1.5f, 0.2f);
         if (h.work >= 1f) complete(h);
@@ -230,7 +232,7 @@ public class ConstructionSystem {
             case FACTORY: {
                 Unit fac = w.spawn(ShipClass.FACTORY, f, x, y);
                 w.ring(fac.x, fac.y, 150, f.color, 0.8f);
-                w.notify(f, "Ship Factory online. Select it to build warships (F2 cycles factories).", World.GOOD);
+                w.notify(f, "Ship Station online. Select it to build warships (F2 cycles stations).", World.GOOD);
                 break;
             }
             case MENDER: {

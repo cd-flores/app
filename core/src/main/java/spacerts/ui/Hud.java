@@ -99,10 +99,7 @@ public class Hud {
                 return true;
             }
         }
-        if (gs.showHelp) {
-            gs.showHelp = false;
-            return true;
-        }
+        if (gs.showHelp) return true; // the tutorial pages are turned with its buttons
         if (gs.menuOpen) return true;
         return contains(sx, syDown);
     }
@@ -148,6 +145,14 @@ public class Hud {
         t.w = w;
         t.align = align;
         return t;
+    }
+
+    private float wrappedHeight(String s, float scale, float w) {
+        BitmapFont f = gs.game.font;
+        f.getData().setScale(scale);
+        layout.setText(f, s, Color.WHITE, w, Align.left, true);
+        f.getData().setScale(1f);
+        return layout.height;
     }
 
     private float width(String s, float scale) {
@@ -220,16 +225,19 @@ public class Hud {
         if (gs.showGalaxy && w.galaxy.hive) galaxyMap(sr, w);
         topBar(sr, w, p);
         bottomPanel(sr, w, p);
+        tacticToggle(sr, w, p);
         minimap(sr, w);
         messages(w);
+        if (gs.input.chatOpen) chatBox(sr, w);
         sr.end();
         flushTexts();
 
-        if (gs.showHelp || gs.menuOpen || w.gameOver || victoryShowing()) {
+        if (gs.showHelp || gs.menuOpen || gs.confirmSurrender || w.gameOver || victoryShowing()) {
             buttons.clear();
             sr.begin(ShapeRenderer.ShapeType.Filled);
             if (gs.showHelp) help(sr);
             else if (w.gameOver) gameOver(sr, w);
+            else if (gs.confirmSurrender) surrenderConfirm(sr);
             else if (victoryShowing() && !gs.menuOpen) victory(sr, w);
             else pauseMenu(sr);
             sr.end();
@@ -244,41 +252,113 @@ public class Hud {
         sr.rect(0, H - TOP, W, TOP);
         sr.setColor(ACCENT);
         sr.rect(0, H - TOP - 1, W, 1);
-        float y = H - 9, x = 12;
-        x = stat(x, y, "Energy " + (int) p.energy, ENERGY_C);
-        x = stat(x, y, "Metal " + (int) p.metal, METAL_C);
-        x = stat(x, y, "Housing " + p.popUsed + "/" + p.popCap, p.popUsed >= p.popCap ? World.ALERT : Color.WHITE);
-        x += 12;
+        float y = H - 9;
+
+        // ---- left: stockpiles, housing, upkeep, rare items and the auto-defense button
+        int tier = spacerts.systems.EconomySystem.upkeepTier(p);
+        float drain = spacerts.systems.EconomySystem.upkeep(p);
+        List<String> labels = new ArrayList<>();
+        List<Color> colors = new ArrayList<>();
+        labels.add("Energy " + (int) p.energy);
+        colors.add(ENERGY_C);
+        labels.add("Metal " + (int) p.metal);
+        colors.add(METAL_C);
+        labels.add("Housing " + p.popUsed + "/" + p.popCap);
+        colors.add(p.popUsed >= p.popCap ? World.ALERT : Color.WHITE);
+        labels.add(tier == 0 ? "No upkeep" : (tier == 1 ? "Low upkeep -" : "High upkeep -") + String.format("%.1f/s", drain));
+        colors.add(tier == 0 ? UPKEEP_NONE : tier == 1 ? UPKEEP_LOW : World.ALERT);
+        int firstRare = labels.size();
         for (RareItem r : RareItem.values())
-            if (!r.scarce() || p.found[r.ordinal()] || p.rare[r.ordinal()] > 0) // scarce finds appear once found
-                x = stat(x, y, r.shortName + " " + p.rare[r.ordinal()], r.color);
+            if (!r.scarce() || p.found[r.ordinal()] || p.rare[r.ordinal()] > 0) { // scarce finds appear once found
+                labels.add(r.shortName + " " + p.rare[r.ordinal()]);
+                colors.add(r.color);
+            }
+        if (p.cheatsUsed) { // a cheater's badge, as in Warcraft III's "Cheat Code Enabled"
+            labels.add("CHEATS");
+            colors.add(World.ALERT);
+        }
+        String ad = "Auto-defend " + (p.autoDefense ? "ON" : "OFF") + " (G)";
+
+        // ---- right: status segments, most important first (dropped from the end until everything fits)
+        float toRaid = Math.max(0, w.threats.nextWave - w.time);
+        String[] seg = new String[9];
+        int[] rank = new int[9]; // display order left to right
+        int n = 0;
+        StarSystem here = w.systemAt(gs.cam.position.x, gs.cam.position.y);
+        seg[n] = "Time " + clock(w.time); rank[n++] = 4;
+        seg[n] = "Pirate raid ~" + clock(toRaid); rank[n++] = 5;
+        seg[n] = "Speed x" + gs.speed + (gs.paused ? "  PAUSED" : ""); rank[n++] = 6;
+        if (w.piratesOnly()) {
+            seg[n] = "Conquered " + spacerts.systems.ConquestSystem.ownedCount(w) + "/" + w.galaxy.systems.size()
+                    + "  Pirate bases " + spacerts.world.PirateBases.livingBases(w).size() + (w.ascended ? "  ASCENDED" : "");
+            rank[n++] = 3;
+        }
+        seg[n] = "F1 Help"; rank[n++] = 8;
+        seg[n] = w.difficulty.title; rank[n++] = 2;
+        if (w.galaxy.hive) { seg[n] = here.name + " (" + here.archetype.title + ")"; rank[n++] = 1; }
+        seg[n] = w.galaxy.hive ? "Tab Galaxy map" : "F Rally flag" + (p.hasFlag ? " (set)" : ""); rank[n++] = 7;
+
+        // pick the largest scale and the most segments that fit without overlapping
+        float scale = 1f;
+        int keep = n;
+        String right = "";
+        float leftEnd = 0;
+        for (float s = 1f; s >= 0.7f; s -= 0.1f) {
+            scale = s;
+            leftEnd = 12;
+            for (int i = 0; i < labels.size(); i++) leftEnd += width(labels.get(i), s) + 22 * s + (i == firstRare ? 12 * s : 0);
+            leftEnd += width(ad, 0.85f * s) + 14;
+            float room = W - leftEnd - 24;
+            for (keep = n; keep >= 3; keep--) {
+                right = joinSegments(seg, rank, keep);
+                if (width(right, s) <= room) break;
+            }
+            if (keep >= 3 && width(right, s) <= room) break;
+        }
+
+        float x = 12;
+        for (int i = 0; i < labels.size(); i++) {
+            if (i == firstRare) x += 12 * scale;
+            float x0 = x;
+            txt(x, y, labels.get(i), colors.get(i), scale);
+            x += width(labels.get(i), scale) + 22 * scale;
+            if (i == 3 && hovered(x0, H - TOP, x - x0 - 10, TOP))
+                tooltip = "Upkeep: ships cost their housing and each station (Ship Station, Hub, Repair Station) counts as "
+                        + spacerts.systems.EconomySystem.UPKEEP_PER_STATION + ".\n"
+                        + "Up to " + spacerts.systems.EconomySystem.UPKEEP_LOW + ": free.   "
+                        + (spacerts.systems.EconomySystem.UPKEEP_LOW + 1) + "-" + spacerts.systems.EconomySystem.UPKEEP_HIGH + ": "
+                        + spacerts.systems.EconomySystem.UPKEEP_LOW_RATE + " energy/s each.   Over " + spacerts.systems.EconomySystem.UPKEEP_HIGH + ": "
+                        + spacerts.systems.EconomySystem.UPKEEP_HIGH_RATE + " energy/s each.\n"
+                        + "You have " + p.upkeepPoints + " upkeep: -" + String.format("%.1f", drain) + " energy/s.\n"
+                        + "Repairs cost metal (a full repair is about half a ship's metal price): currently -"
+                        + String.format("%.1f", p.repairSpend) + " metal/s.";
+        }
 
         // auto-defense toggle (also G)
-        String ad = "Auto-defend " + (p.autoDefense ? "ON" : "OFF") + " (G)";
-        float bw = width(ad, 0.85f) + 14, bx = x, by = H - TOP + 3, bh = TOP - 6;
+        float bw = width(ad, 0.85f * scale) + 14, bx = x, by = H - TOP + 3, bh = TOP - 6;
         boolean hov = hovered(bx, by, bw, bh);
         if (p.autoDefense) sr.setColor(hov ? 0.15f : 0.1f, hov ? 0.4f : 0.3f, hov ? 0.22f : 0.16f, 1f);
         else sr.setColor(hov ? 0.4f : 0.3f, hov ? 0.15f : 0.1f, hov ? 0.15f : 0.1f, 1f);
         sr.rect(bx, by, bw, bh);
-        txt(bx + 7, y, ad, Color.WHITE, 0.85f);
-        buttons.add(new Btn(bx, by, bw, bh, () -> p.autoDefense = !p.autoDefense));
+        txt(bx + 7, y, ad, Color.WHITE, 0.85f * scale);
+        buttons.add(new Btn(bx, by, bw, bh, gs.input::toggleAutoDefense));
         if (hov) tooltip = "Auto-defense: idle warships attack enemies near your bases (about 1.5x their strength),\n"
                 + "harvesters flee from raids, and your ships focus fire. (Auto-retreat is separate: R on selected warships.)\n"
                 + "Ships you are giving orders to are never overridden.";
 
-        float toRaid = Math.max(0, w.threats.nextWave - w.time);
-        String bases = w.piratesOnly() ? "     Conquered " + spacerts.systems.ConquestSystem.ownedCount(w) + "/" + w.galaxy.systems.size()
-                + "     Pirate bases: " + spacerts.world.PirateBases.livingBases(w).size() + (w.ascended ? "     ASCENDED" : "") : "";
-        StarSystem here = w.systemAt(gs.cam.position.x, gs.cam.position.y);
-        String where = w.galaxy.hive ? here.name + " (" + here.archetype.title + ")     " : "";
-        String right = where + w.difficulty.title + bases + "     Time " + clock(w.time) + "     Pirate raid ~" + clock(toRaid) + "     Speed x" + gs.speed
-                + (gs.paused ? "     PAUSED" : "") + (w.galaxy.hive ? "     Tab Galaxy map" : "     F Rally flag" + (p.hasFlag ? " (set)" : "")) + "     F1 Help";
-        aligned(W - 1012, y, 1000, right, toRaid < 45 ? World.ALERT : DIM, 1f, Align.right);
+        float rx = bx + bw + 24;
+        aligned(rx, y, W - 12 - rx, right, toRaid < 45 ? World.ALERT : DIM, scale, Align.right);
     }
 
-    private float stat(float x, float y, String s, Color c) {
-        txt(x, y, s, c, 1f);
-        return x + width(s, 1f) + 22;
+    private static final Color UPKEEP_NONE = new Color(0.5f, 0.9f, 0.55f, 1f), UPKEEP_LOW = new Color(1f, 0.85f, 0.35f, 1f);
+
+    /** The `keep` most important segments, shown in their display order (rank). */
+    private static String joinSegments(String[] seg, int[] rank, int keep) {
+        StringBuilder sb = new StringBuilder();
+        for (int r = 0; r <= 8; r++)
+            for (int i = 0; i < keep; i++)
+                if (rank[i] == r) sb.append(sb.length() > 0 ? "     " : "").append(seg[i]);
+        return sb.toString();
     }
 
     private void bottomPanel(ShapeRenderer sr, World w, Faction p) {
@@ -297,6 +377,7 @@ public class Hud {
         if (prod != null) {
             buildPanel(sr, w, p, prod, x0, x1);
             if (prod.cls == ShipClass.HUB) researchPanel(sr, w, p);
+            if (prod.cls == ShipClass.COMMAND) tacticSelect(sr, p);
         } else if (builder != null) {
             constructPanel(sr, w, p, builder, x0, x1);
         } else if (gs.input.selectedColony() != null) {
@@ -304,17 +385,129 @@ public class Hud {
         } else {
             float y = BOTTOM - 14;
             txt(x0, y, "Commands", TITLE, 1f);
-            retreatToggle(sr, w, p, x0 + width("Commands", 1f) + 20, y);
+            float bx = retreatToggle(sr, w, p, x0 + width("Commands", 1f) + 20, y);
+            bx = abilityButtons(sr, p, bx, y, x1);
+            targetingButton(sr, p, bx, y, x1);
             String hint = "Left-click / drag: select     Right-click: move, attack, harvest, colonize, survey     Ctrl+Right-click: attack-move\n"
-                    + "H: Mothership (harvesters)   F2: Ship Factories (warships)   B: Research Hub   I: idle harvesters   Ctrl+A: all warships\n"
-                    + "F: place rally flag (Shift+F removes)   Q: ability   R: auto-retreat on/off   X: stop   C: center   Double-click: select all of a type\n"
-                    + "Select a Harvester to build Factories, the Hub and Menders. Click a colony to upgrade it.   Space: pause   [ ]: speed   F5 / F9: save / load";
+                    + "H: Mothership (harvesters)   F2: Ship Stations (warships)   V: rally stations   B: Research Hub   I: idle harvesters   Ctrl+A: all warships\n"
+                    + "F: place rally flag (Shift+F removes)   Skills: Q Ping  E Ghost Drive  T Taunt  Z Dash  N Nova  O Overcharge   R: auto-retreat on/off   X: stop   C: center   Double-click: select all of a type\n"
+                    + "Select a Harvester to build Stations, the Hub and Repair Stations. Click a colony to upgrade it.   Space: pause   [ ]: speed   F5 / F9: save / load";
             wrap(x0, y - 26, x1 - x0, hint, DIM, 0.85f);
         }
     }
 
-    /** "Auto-retreat ON/OFF (R)" button for the selected warships; draws nothing when none are selected. */
-    private void retreatToggle(ShapeRenderer sr, World w, Faction p, float bx, float y) {
+    /** One button per skill the selected ships have, labelled with its own hotkey and the shortest cooldown left. */
+    private float abilityButtons(ShapeRenderer sr, Faction p, float bx, float y, float x1) {
+        for (Ability a : Ability.values()) {
+            if (a == Ability.NONE) continue;
+            int have = 0;
+            float cd = Float.MAX_VALUE;
+            for (Unit u : gs.input.selected)
+                if (!u.dead && u.owner == p && u.s.has(a)) {
+                    have++;
+                    cd = Math.min(cd, u.abilityCds[a.ordinal()]);
+                }
+            if (have == 0) continue;
+            String label = "[" + a.keyName + "] " + a.title + (cd > 0 ? " " + (int) Math.ceil(cd) + "s" : "");
+            float bw = width(label, 0.85f) + 14, bh = 20, by = y - 16;
+            if (bx + bw > x1) return bx;
+            boolean hov = hovered(bx, by, bw, bh);
+            boolean ready = cd <= 0;
+            sr.setColor(ready ? (hov ? 0.2f : 0.13f) : 0.1f, ready ? (hov ? 0.32f : 0.22f) : 0.12f, ready ? (hov ? 0.55f : 0.4f) : 0.18f, 1f);
+            sr.rect(bx, by, bw, bh);
+            txt(bx + 7, y, label, ready ? Color.WHITE : DIM, 0.85f);
+            final Ability fa = a;
+            buttons.add(new Btn(bx, by, bw, bh, () -> gs.input.useAbility(fa)));
+            if (hov) tooltip = skillHelp(a);
+            bx += bw + 8;
+        }
+        return bx;
+    }
+
+    /** "Target: Nearest (K)" for the selected warships; clicking cycles the targeting mode. */
+    private void targetingButton(ShapeRenderer sr, Faction p, float bx, float y, float x1) {
+        spacerts.units.Targeting mode = null;
+        boolean mixed = false;
+        for (Unit u : gs.input.selected) {
+            if (u.dead || u.owner != p || !(u.cls.isWarship() || (u.armed() && !u.s.stationary))) continue;
+            if (mode == null) mode = u.targeting;
+            else if (mode != u.targeting) mixed = true;
+        }
+        if (mode == null) return;
+        String label = "Target: " + (mixed ? "Mixed" : mode.title) + " (K)";
+        float bw = width(label, 0.85f) + 14, bh = 20, by = y - 16;
+        if (bx + bw > x1) return;
+        boolean hov = hovered(bx, by, bw, bh);
+        sr.setColor(hov ? 0.32f : 0.22f, hov ? 0.26f : 0.18f, hov ? 0.1f : 0.06f, 1f);
+        sr.rect(bx, by, bw, bh);
+        txt(bx + 7, y, label, Color.WHITE, 0.85f);
+        buttons.add(new Btn(bx, by, bw, bh, gs.input::cycleTargeting));
+        if (hov) tooltip = "Targeting (K cycles): which enemy these ships pick among those in reach.\n"
+                + "Nearest - Farthest - Most health - Least health - Random. Taunts still win.";
+    }
+
+    /** The tactic toggle on top of the bottom bar, right-aligned above the minimap side. */
+    private void tacticToggle(ShapeRenderer sr, World w, Faction p) {
+        if (p.tactics.isEmpty() || p.activeTactic == null) return;
+        boolean cc = spacerts.net.CommandExecutor.hasCommandCenter(w, p);
+        boolean on = gs.tacticsOn;
+        String label = "Tactic: " + p.activeTactic.title + (cc ? (on ? "  ON" : "  OFF") : "  (needs a Command Center)") + "  (Y)";
+        float bw = width(label, 0.9f) + 18, bh = 24, bx = W - MINI - 22 - bw, by = BOTTOM + 4;
+        boolean hov = hovered(bx, by, bw, bh);
+        if (!cc) sr.setColor(0.12f, 0.12f, 0.14f, 0.95f);
+        else if (on) sr.setColor(hov ? 0.5f : 0.4f, hov ? 0.3f : 0.22f, hov ? 0.08f : 0.05f, 0.95f);
+        else sr.setColor(hov ? 0.18f : 0.1f, hov ? 0.22f : 0.14f, hov ? 0.32f : 0.22f, 0.95f);
+        sr.rect(bx, by, bw, bh);
+        border(sr, bx, by, bw, bh, on && cc ? PAGE_C : ACCENT);
+        txt(bx + 9, by + 17, label, cc ? Color.WHITE : DIM, 0.9f);
+        buttons.add(new Btn(bx, by, bw, bh, gs.input::toggleTactics));
+        if (hov) {
+            StringBuilder sb = new StringBuilder(p.activeTactic.title + ": " + p.activeTactic.desc);
+            for (spacerts.units.TacticUpgrade u : p.tacticUps)
+                if (u.needs == null || u.needs == p.activeTactic) sb.append("\n+ ").append(u.title).append(": ").append(u.desc);
+            sb.append("\nWhile ON, attack orders (Ctrl+right-click, or right-click an enemy) form the selected ships up first.\n"
+                    + "Ships the tactic has no place for just attack-move. Pick the tactic at the Command Center.");
+            tooltip = sb.toString();
+        }
+    }
+
+    /** Command Center selected: buttons to pick the active tactic (locked ones greyed out). */
+    private void tacticSelect(ShapeRenderer sr, Faction p) {
+        float bw = 150, bh = 26, gap = 6, x = 318, y = BOTTOM + 8;
+        txt(x, y + 18, "Active tactic:", TITLE, 0.9f);
+        x += width("Active tactic:", 0.9f) + 10;
+        for (spacerts.units.Tactic t : spacerts.units.Tactic.values()) {
+            boolean have = p.tactics.contains(t), active = p.activeTactic == t;
+            boolean hov = have && hovered(x, y, bw, bh);
+            if (active) sr.setColor(0.4f, 0.3f, 0.08f, 0.95f);
+            else if (have) sr.setColor(hov ? 0.2f : 0.12f, hov ? 0.3f : 0.2f, hov ? 0.5f : 0.34f, 0.95f);
+            else sr.setColor(0.07f, 0.07f, 0.09f, 0.9f);
+            sr.rect(x, y, bw, bh);
+            border(sr, x, y, bw, bh, active ? PAGE_C : ACCENT);
+            aligned(x, y + 18, bw, (active ? "> " : "") + t.title + (have ? "" : " (locked)"), have ? Color.WHITE : DIM, 0.85f, Align.center);
+            final spacerts.units.Tactic ft = t;
+            if (have) buttons.add(new Btn(x, y, bw, bh, () -> gs.issue(new spacerts.net.Command(spacerts.net.Command.Type.SET_TACTIC, 0).arg(ft.ordinal()))));
+            if (hovered(x, y, bw, bh)) tooltip = t.title + ": " + t.desc + (have ? "" : "\nUnlock it in this Command Center's build list.");
+            x += bw + gap;
+        }
+    }
+
+    private static String skillHelp(Ability a) {
+        switch (a) {
+            case PING: return "Sensor Ping (Q, Wisp): reveals everything within 1600 for 8 s, cloaked ships included.";
+            case GHOST: return "Ghost Drive (E, Wisp): cloaked and " + (int) ((UnitBehavior.GHOST_SPEED - 1) * 100) + "% faster for "
+                    + (int) UnitBehavior.GHOST_TIME + " s, but it can't fire. Detectors still see it. Cooldown " + (int) UnitBehavior.GHOST_CD + " s.";
+            case DASH: return "Evasive Dash (Z, Longbow / Phantom): leaps " + (int) UnitBehavior.DASH_DIST + " away from the nearest threat\n"
+                    + "(or straight backward). Cooldown " + (int) UnitBehavior.DASH_CD + " s.";
+            case TAUNT: return "Taunt (T): nearby enemies must shoot this ship for 5 s.";
+            case NOVA: return "Nova Cannon (N, Leviathan): massive area blast at its target. Needs Nova Cannon research.";
+            case OVERCHARGE: return "Overcharge (O, Sovereign): double rate of fire for 6 s.";
+            default: return "";
+        }
+    }
+
+    /** "Auto-retreat ON/OFF (R)" button for the selected warships; returns where the next button can go. */
+    private float retreatToggle(ShapeRenderer sr, World w, Faction p, float bx, float y) {
         int ships = 0, off = 0, retreating = 0;
         for (Unit u : gs.input.selected)
             if (!u.dead && u.owner == p && u.cls.isWarship()) {
@@ -322,7 +515,7 @@ public class Hud {
                 if (u.retreatOff) off++;
                 if (u.retreating) retreating++;
             }
-        if (ships == 0) return;
+        if (ships == 0) return bx;
         boolean on = off == 0;
         String label = "Auto-retreat " + (on ? "ON" : off == ships ? "OFF" : "MIXED") + " (R)" + (retreating > 0 ? "  - " + retreating + " repairing" : "");
         float bw = width(label, 0.85f) + 14, bh = 20, by = y - 16;
@@ -333,9 +526,10 @@ public class Hud {
         txt(bx + 7, y, label, Color.WHITE, 0.85f);
         buttons.add(new Btn(bx, by, bw, bh, gs.input::toggleRetreat));
         if (hov) tooltip = "Auto-retreat: below " + (int) (Unit.RETREAT_AT * 100) + "% hull a warship pulls back to the nearest Mender or base\n"
-                + "(colony, factory, Mothership), repairs to " + (int) (Unit.RETREAT_DONE * 100) + "%, then attack-moves back into the fight.\n"
+                + "(colony, Ship Station, Mothership), repairs to " + (int) (Unit.RETREAT_DONE * 100) + "%, then attack-moves back into the fight.\n"
                 + "Any ship parked near your bases and out of combat for " + (int) UnitBehavior.REPAIR_DELAY + " s repairs "
                 + (int) (UnitBehavior.REPAIR_RATE * 100) + "% of its hull per second.";
+        return bx + bw + 8;
     }
 
     /** Turret / Shield upgrade buttons for the selected colony; the nearest free harvester goes and builds it. */
@@ -395,6 +589,34 @@ public class Hud {
                             + "Fortified worlds and Ancient Ruins must be conquered first. Build a Research Hub and send Surveyors "
                             + "to uninhabitable planets for rare items.", DIM, 0.8f);
         }
+        destroyButton(sr, p, x, width);
+    }
+
+    /** "Destroy (Del)" for scuttling the selection for a 25% refund; "Surrender" when only the Mothership is selected. */
+    private void destroyButton(ShapeRenderer sr, Faction p, float x, float width) {
+        int n = 0, e = 0, m = 0;
+        boolean ms = false;
+        for (Unit u : gs.input.selected) {
+            if (u.dead || u.owner != p) continue;
+            if (spacerts.net.CommandExecutor.destroyable(u)) {
+                int[] back = spacerts.net.CommandExecutor.scuttleRefund(u);
+                e += back[0];
+                m += back[1];
+                n++;
+            } else if (u.cls == ShipClass.MOTHERSHIP) ms = true;
+        }
+        if (n == 0 && !ms) return;
+        boolean surrender = n == 0;
+        String label = surrender ? "Surrender" : "Destroy (Del)  +25%";
+        float bw = width(label, 0.85f) + 16, bh = 22, bx = x + width - bw, by = 8;
+        boolean hov = hovered(bx, by, bw, bh);
+        sr.setColor(hov ? 0.5f : 0.34f, hov ? 0.12f : 0.08f, hov ? 0.12f : 0.08f, 1f);
+        sr.rect(bx, by, bw, bh);
+        txt(bx + 8, by + 16, label, Color.WHITE, 0.85f);
+        buttons.add(new Btn(bx, by, bw, bh, gs.input::destroySelected));
+        if (hov) tooltip = surrender ? "Surrender: give up and lose the game (asks first)."
+                : "Destroy " + n + (n == 1 ? " unit" : " units") + " for 25% of the price back: +" + e + " energy, +" + m + " metal.\n"
+                + "Anything still queued in a destroyed station is refunded in full. No wreck is left behind.";
     }
 
     private void unitInfo(ShapeRenderer sr, World w, Unit u, float x, float y, float width) {
@@ -423,8 +645,12 @@ public class Hud {
         StringBuilder sb = new StringBuilder();
         if (u.owner == w.player) sb.append(status(w, u)).append("\n");
         if (u.armed()) sb.append(String.format("Dmg %.0f / %.1fs   Range %d", u.damage(), u.s.cooldown, (int) u.range())).append("\n");
-        if (u.s.ability != Ability.NONE && u.owner == w.player)
-            sb.append("Q: ").append(u.s.ability.title).append(u.abilityCd > 0 ? " (" + (int) Math.ceil(u.abilityCd) + "s)" : " - ready").append("\n");
+        if (u.owner == w.player)
+            for (Ability a : u.s.abilities) {
+                float cd = u.abilityCds[a.ordinal()];
+                sb.append(a.keyName).append(": ").append(a.title).append(cd > 0 ? " (" + (int) Math.ceil(cd) + "s)" : " - ready").append("\n");
+            }
+        if (u.ghostTimer > 0) sb.append("Ghost Drive: cloaked, can't fire (").append((int) Math.ceil(u.ghostTimer)).append("s)\n");
         switch (u.cls) {
             case COLONY:
                 if (u.home != null) {
@@ -468,8 +694,7 @@ public class Hud {
                     sr.setColor(hov ? 0.5f : 0.3f, hov ? 0.15f : 0.08f, hov ? 0.15f : 0.08f, 1f);
                     sr.rect(bx, by, 130, 22);
                     txt(bx + 8, by + 16, "Cancel research", Color.WHITE, 0.8f);
-                    final Faction f = u.owner;
-                    buttons.add(new Btn(bx, by, 130, 22, () -> w.production.cancelResearch(f)));
+                    buttons.add(new Btn(bx, by, 130, 22, () -> gs.issue(new spacerts.net.Command(spacerts.net.Command.Type.CANCEL_RESEARCH, 0))));
                 }
                 break;
             default:
@@ -537,18 +762,37 @@ public class Hud {
         }
         wrap(x, y - 26, width, sb.toString(), Color.WHITE, 0.82f);
     }
+    /** "Rally Stations ON/OFF (V)" button, right-aligned at x1 in the Mothership's panel header; returns its left edge. */
+    private float rallyToggle(ShapeRenderer sr, Faction p, float x1, float y) {
+        boolean on = p.rallyStations;
+        String label = "Rally Stations " + (on ? "ON" : "OFF") + " (V)";
+        float bw = width(label, 0.85f) + 14, bh = 20, bx = x1 - bw, by = y - 16;
+        boolean hov = hovered(bx, by, bw, bh);
+        if (on) sr.setColor(hov ? 0.15f : 0.1f, hov ? 0.4f : 0.3f, hov ? 0.22f : 0.16f, 1f);
+        else sr.setColor(hov ? 0.25f : 0.16f, hov ? 0.25f : 0.18f, hov ? 0.35f : 0.26f, 1f);
+        sr.rect(bx, by, bw, bh);
+        txt(bx + 7, y, label, Color.WHITE, 0.85f);
+        buttons.add(new Btn(bx, by, bw, bh, gs.input::toggleRally));
+        if (hov) tooltip = "Rally Stations: your Ship Stations, Research Hub and Repair Stations line up in hex rings around\n"
+                + "the Mothership and move as fast as it does (boosts and warp included). Off: they hold position and\n"
+                + "crawl at half the Mothership's speed. Defenders always orbit outside the rings.";
+        return bx;
+    }
+
     private void buildPanel(ShapeRenderer sr, World w, Faction p, Unit prod, float x0, float x1) {
         float top = BOTTOM - 12;
         String title = "Build - " + prod.s.name + (prod.home != null ? " (" + prod.home.name + ")" : "");
         txt(x0, top, title, TITLE, 1f);
 
+        float qLimit = x1;
+        if (prod.cls == ShipClass.MOTHERSHIP) qLimit = rallyToggle(sr, p, x1, top) - 8;
         float qx = x0 + Math.max(260, width(title, 1f) + 30);
         txt(qx, top, "Queue:", DIM, 0.85f);
         qx += 52;
         for (int i = 0; i < prod.queue.items.size(); i++) {
             ShipClass c = prod.queue.items.get(i);
             float bx = qx + i * 74, by = top - 15, bw = 70, bh = 19;
-            if (bx + bw > x1) break;
+            if (bx + bw > qLimit) break;
             boolean hov = hovered(bx, by, bw, bh);
             if (hov) sr.setColor(0.35f, 0.12f, 0.12f, 1f);
             else sr.setColor(0.08f, 0.14f, 0.24f, 1f);
@@ -560,7 +804,7 @@ public class Hud {
             String nm = c.s.name.length() > 9 ? c.s.name.substring(0, 9) : c.s.name;
             txt(bx + 4, by + 14, nm, Color.WHITE, 0.72f);
             final int idx = i;
-            buttons.add(new Btn(bx, by, bw, bh, () -> w.production.cancel(prod, idx)));
+            buttons.add(new Btn(bx, by, bw, bh, () -> gs.issue(new spacerts.net.Command(spacerts.net.Command.Type.CANCEL_QUEUE, 0).target(prod).arg(idx))));
             if (hov) tooltip = c.s.name + "\nClick to cancel (full refund).";
         }
 
@@ -596,10 +840,7 @@ public class Hud {
             boolean pricier = ce > c.s.energy || cm > c.s.metal;
             txt(bx + 6, by + 16, cost, ok ? (pricier ? new Color(1f, 0.75f, 0.45f, 1f) : new Color(0.85f, 0.85f, 0.6f, 1f)) : new Color(0.65f, 0.45f, 0.45f, 1f), fit(cost, 0.72f, bw - 10));
             final ShipClass fc = c;
-            buttons.add(new Btn(bx, by, bw, bh, () -> {
-                String err = w.production.enqueue(prod, fc);
-                if (err != null) w.notify(p, err, World.ALERT);
-            }));
+            buttons.add(new Btn(bx, by, bw, bh, () -> gs.input.enqueue(prod, fc, false)));
             if (hov) {
                 tooltip = shipTooltip(c, block != null ? block : miss);
                 if (c == ShipClass.STELLAR_REFINEMENT) {
@@ -658,7 +899,7 @@ public class Hud {
             if (hov) tooltip = shipTooltip(c, block != null ? block : miss);
         }
         wrap(x0, top - 28 - bh - 12, x1 - x0,
-                "Factory / Hub: click open space.  Mender: built where the harvester is.  "
+                "Station / Hub / Repair Station: click open space.  "
                         + "Solar Collector: click a star.  Asteroid Miner: click an asteroid or metal planet.  "
                         + "Hold Shift to place several with more selected harvesters.  Planet upgrades: click the colony itself.",
                 DIM, 0.78f);
@@ -752,14 +993,8 @@ public class Hud {
             String sub = done ? "Researched" : "T" + t.tier + "  " + ProductionSystem.costText(t.energy, t.metal, t.rare);
             txt(bx + 8, by + 15, sub, done ? DIM : (ok ? new Color(0.85f, 0.85f, 0.6f, 1f) : new Color(0.6f, 0.45f, 0.45f, 1f)), fit(sub, 0.68f, bw - 12));
             final Tech ft = t;
-            buttons.add(new Btn(bx, by, bw, bh, () -> {
-                if (p.researching == ft) {
-                    w.production.cancelResearch(p);
-                    return;
-                }
-                if (p.has(ft)) return;
-                String err = w.production.startResearch(p, ft);
-                if (err != null) w.notify(p, err, World.ALERT);
+            buttons.add(new Btn(bx, by, bw, bh, () -> { // clicking the active research cancels it
+                if (!p.has(ft)) gs.issue(new spacerts.net.Command(spacerts.net.Command.Type.RESEARCH, 0).tech(ft));
             }));
             if (hov) {
                 StringBuilder sb = new StringBuilder();
@@ -998,16 +1233,18 @@ public class Hud {
     }
 
     private void messages(World w) {
-        float y = H - TOP - 12;
+        float y = gs.showGalaxy && w.galaxy.hive ? H - TOP - 74 : H - TOP - 12; // below the galaxy map header
+        // multiplayer lists the empires at the top right: keep messages clear of it
+        float maxW = gs.world.setup.mode == spacerts.world.GameSetup.Mode.MULTIPLAYER ? W - 460 : W * 0.6f;
         int shown = 0;
         for (int i = w.messages.size() - 1; i >= 0 && shown < 6; i--) {
             Message m = w.messages.get(i);
             float age = w.time - m.time;
-            if (age > 12 || age < 0) continue;
-            float a = age > 10 ? (12 - age) / 2f : 1f;
-            Txt t = txt(14, y, m.text, m.color, 0.95f);
+            if (age > m.life() || age < 0) continue;
+            float a = age > m.life() - 2 ? (m.life() - age) / 2f : 1f;
+            Txt t = wrap(14, y, maxW, m.text, m.color, 0.95f); // wrapped so it never runs into the right-hand overlays
             t.c.a = a;
-            y -= 20;
+            y -= wrappedHeight(m.text, 0.95f, maxW) + 8;
             shown++;
         }
     }
@@ -1021,51 +1258,190 @@ public class Hud {
         border(sr, x, y, bw, bh, ACCENT);
     }
 
-    private void help(ShapeRenderer sr) {
-        float bw = Math.min(W - 40, 960), bh = Math.min(H - 40, 720);
-        overlayBox(sr, bw, bh);
-        float x = (W - bw) / 2 + 24, y = (H + bh) / 2 - 22;
-        txt(x, y, "NEBULA DOMINION - How to play", TITLE, 1.4f);
-        String body =
+    private static final Color PAGE_C = new Color(1f, 0.85f, 0.45f, 1f);
+
+    /** Tutorial page currently shown (the F1 overlay is paginated). */
+    private int helpPage;
+
+    /** Turns the tutorial page; turning past the last page closes it. */
+    public void helpPage(int delta) {
+        int n = helpPages().length;
+        int next = helpPage + delta;
+        if (next >= n) {
+            gs.showHelp = false;
+            helpPage = 0;
+            return;
+        }
+        helpPage = Math.max(0, next);
+    }
+
+    /** Tutorial pages: {title, body}. */
+    private String[][] helpPages() {
+        List<String[]> pages = new ArrayList<>();
+        pages.add(new String[]{"Welcome",
                 "GOAL: Survive and expand forever. Rival empires and ever-growing pirate raids will come for you. Lose your Mothership and it is over.\n\n"
-                        + "ECONOMY\n"
-                        + "  Harvesters (built by the Mothership) collect ENERGY from stars and METAL from asteroids, barren planets and WRECKS.\n"
-                        + "  Mining Barges (Ship Factory) are tough, slow haulers with a 150 hold. Destroyed ships leave wrecks worth HALF their metal.\n"
-                        + "  Scarce finds turn up now and then: Dark Matter (mining asteroids), Star Essence (starlight), Neutronium (salvage), Exotic Matter (ruins).\n"
-                        + "  HOUSING limits your fleet: colonize Habitable Worlds (+25) or conquer Fortified Worlds (+60). Every new colony brings a free Harvester.\n"
+                        + "THE BASICS\n"
+                        + "  Left-click or drag to select. Right-click to move, attack, harvest, colonize or survey. Ctrl+Right-click: attack-move.\n"
+                        + "  WASD, the arrow keys, the screen edges or a middle-drag pan the camera; the mouse wheel zooms; click the minimap to jump.\n"
+                        + "  Space pauses, [ and ] change the game speed, F5 / F9 save and load, Esc opens the menu, F1 shows this tutorial again.\n\n"
+                        + "Use the arrow keys, A / D, or the buttons below to turn the pages."});
+        pages.add(new String[]{"Economy",
+                "  Harvesters (built by the Mothership) collect ENERGY from stars and METAL from asteroids, barren planets and WRECKS.\n"
+                        + "  Mining Barges (Ship Station) are tough, slow haulers with a 150 hold. Destroyed ships leave wrecks worth HALF their metal.\n"
+                        + "  Scarce finds turn up now and then: Dark Matter (mining asteroids), Star Essence (starlight), Neutronium (salvage), Exotic Matter (ruins).\n\n"
+                        + "  HOUSING limits your fleet: colonize Habitable Worlds or conquer Fortified Worlds. Every new colony brings a free Harvester.\n"
                         + "  Ships fly 2x faster toward your colonies, and 1.75x toward any planet or while charging into an attack.\n\n"
-                        + "BUILDING (select a Harvester)\n"
-                        + "  1 Ship Factory  2 Research Hub  3 Repair Station (placed; heals everything within 400)  4 Solar Collector  5 Asteroid Miner\n"
-                        + "  Mothership tier II: 7 Defense Platform  8 Ore Refinery (+25% metal)  9 Sensor Array.   Tier III: 0 Ion Cannon.\n"
-                        + "  PLANET UPGRADES: click your colony, then 1 Turret Upgrade or 2 Shield Upgrade - the nearest Harvester builds it (5 points per colony).\n\n"
-                        + "TIERS (select it, then U or its upgrade button)\n"
-                        + "  Mothership I-III: more hull, guns and buildings.  Ship Factory I-III: 30% faster per tier; tier II unlocks Corsair, Tempest,\n"
-                        + "  Aegis, Phantom; tier III unlocks Sovereign, Halcyon, Leviathan.  Research Hub tiers (Hub Expansion research) research 25% faster.\n"
-                        + "  WARSHIP PRICES grow logarithmically with how many of that type you have: 10 in service = +84%, 50 = +138%. Mix your fleet.\n\n"
-                        + (gs.world.galaxy.hive
-                        ? "HIVE GALAXY (pirates only) - conquer it hex by hex\n"
-                        + "  You start at the BOTTOM. Danger rises toward the Pirate Citadel at the top. 6 Claim Beacon (Harvester) claims a hex: +income, no stronghold rises near it.\n"
-                        + "  JUMP GATES join the hexes: right-click a gate to fly through. Tab: GALAXY MAP (grey = unclaimed, blue = yours, red = pirate).\n"
-                        + "  Destroy the Citadel, claim its hex and build the ASCENSION GATE (- key, Mothership tier III) to win. J jumps to the last alert.\n\n"
-                        : "")
-                        + "RESEARCH\n"
-                        + "  Select the Research Hub (B) to research tech and build Surveyors.\n"
-                        + "  Surveyors land on uninhabitable planets and extract RARE ITEMS: Volcanic=Pyro, Ice=Cryo, Gas giant=Plasma,\n"
-                        + "  Crystal=Void, Ancient Ruins (guarded)=Relic. Rare items unlock upgrades and rare ships (Phantom, Aegis, Leviathan).\n\n"
-                        + "WARSHIPS  (Lancer beats Longbow, Longbow beats Bulwark, Bulwark beats Lancer)\n"
-                        + "  Wisp scout - Lancer infantry - Bulwark tank - Longbow sniper - Mender support - Hive carrier - Leviathan capital ship\n\n"
-                        + "CONTROLS\n"
-                        + "  Left-click / drag to select. Right-click to move / attack / harvest / colonize / survey. Ctrl+Right-click: attack-move.\n"
-                        + "  F places the RALLY FLAG where new warships gather (Shift+F removes). Shift+right-click with a factory sets its own rally point; right-click moves it (factories and the Hub crawl like the Mothership).\n"
+                        + "  UPKEEP: a big army drains energy every second (top bar). Ships count their housing, each station counts 4.\n"
+                        + "  Up to 40: free.  41-100: low.  Over 100: high.\n"
+                        + "  REPAIRS cost metal: a full repair costs about half a ship's metal price. With no metal, repairs stop."});
+        pages.add(new String[]{"Building and stations",
+                "  Select a Harvester, then press a number key:\n"
+                        + "  1 Ship Station   2 Research Hub   3 Repair Station (heals everything within 400)   4 Solar Collector   5 Asteroid Miner\n"
+                        + "  6 Command Center (tactics).   Mothership tier II: 8 Defense Platform   9 Ore Refinery (+25% metal)   0 Sensor Array.   Tier III: - Ion Cannon.\n\n"
+                        + "  PLANET UPGRADES: click your colony, then 1 Turret Upgrade or 2 Shield Upgrade. The nearest Harvester builds it (5 points per colony).\n\n"
+                        + "  STATIONS (Ship Stations, the Research Hub, Repair Stations) can move, at half the Mothership's speed.\n"
+                        + "  V (or the button on the Mothership's panel) RALLIES them: they line up in hex rings around the Mothership and move as fast as it does.\n\n"
+                        + "  TIERS (select it, then U or its upgrade button): Mothership I-III adds hull, guns and buildings. Ship Station I-III builds\n"
+                        + "  30% faster per tier; tier II unlocks Corsair, Tempest, Aegis and Phantom; tier III unlocks Sovereign, Halcyon and Leviathan.\n"
+                        + "  WARSHIP PRICES grow with how many of that type you have: 10 in service = +84%, 50 = +138%. Mix your fleet."});
+        pages.add(new String[]{"Warships and skills",
+                "  Lancer beats Longbow, Longbow beats Bulwark, Bulwark beats Lancer.\n"
+                        + "  Wisp scout - Lancer infantry - Bulwark tank - Longbow sniper - Hive carrier - Leviathan capital ship.\n"
+                        + "  DEFENDER (Mothership tier II, up to 4): a huge escort that orbits the Mothership and never leaves its post.\n\n"
+                        + "ACTIVATED SKILLS - each has its own key (or click its button in the bottom panel):\n"
+                        + "  Q  Sensor Ping (Wisp): reveals a wide area, cloaked ships included.\n"
+                        + "  E  Ghost Drive (Wisp): cloaked and 60% faster for 6 s, but it cannot fire.\n"
+                        + "  T  Taunt (Bulwark, Aegis, Defender): nearby enemies must shoot it.\n"
+                        + "  Z  Evasive Dash (Longbow, Phantom): leaps 400 away from the nearest threat.\n"
+                        + "  N  Nova Cannon (Leviathan): huge area blast (needs research).\n"
+                        + "  O  Overcharge (Sovereign): double rate of fire for 6 s.\n\n"
+                        + "  Snipers are revealed for 4 s with a red crosshair whenever they shoot at you.\n"
+                        + "  Brood Swarm research: a destroyed Hive releases 5 Broodlings that keep fighting."});
+        pages.add(new String[]{"Research and automation",
+                "  Select the Research Hub (B) to research tech and build Surveyors.\n"
+                        + "  Surveyors land on uninhabitable planets and extract RARE ITEMS: Volcanic = Pyro, Ice = Cryo, Gas giant = Plasma,\n"
+                        + "  Crystal = Void, Ancient Ruins (guarded) = Relic. Rare items unlock upgrades and rare ships (Phantom, Aegis, Leviathan).\n\n"
                         + "  G toggles AUTO-DEFENSE: idle warships defend your bases and harvesters flee raids.\n"
-                        + "  R toggles AUTO-RETREAT for the selected warships: below 25% hull they pull back to a Mender or base, repair, and return.\n"
-                        + "  Snipers (Longbow, Phantom) are revealed for 4 s with a red crosshair whenever they shoot at you.\n"
-                        + "  Number keys 1-9, 0, -, = build from the selected factory / structure / harvester.\n"
-                        + "  H Mothership   F2 Ship Factories   B Research Hub   I idle harvesters   Ctrl+A all warships   Q ability   X stop   C center\n"
-                        + "  WASD / arrows / screen edges / middle-drag to pan, mouse wheel to zoom, click the minimap to jump.\n"
-                        + "  Space pause   [ ] game speed   F5 save   F9 load   Esc menu   F1 this help\n\n"
-                        + "Press F1, Esc, Enter or click to start.";
-        wrap(x, y - 40, bw - 48, body, Color.WHITE, 0.9f);
+                        + "  R toggles AUTO-RETREAT for the selected warships: below 25% hull they pull back to a Repair Station or base, repair, and return.\n"
+                        + "  F places the RALLY FLAG where new warships gather (Shift+F removes). Shift+right-click with a station sets its own rally point."});
+        if (gs.world.galaxy.hive)
+            pages.add(new String[]{"The Hive galaxy",
+                    "  You start at the BOTTOM. Danger rises toward the Pirate Citadel at the top.\n"
+                            + "  7 Claim Beacon (Harvester) claims a hex: more income, and no stronghold rises near it.\n"
+                            + "  JUMP GATES join the hexes: right-click a gate to fly through. Tab: GALAXY MAP (grey = unclaimed, blue = yours, red = pirate).\n"
+                            + "  Destroy the Citadel, claim its hex and build the ASCENSION GATE (= key, Mothership tier III) to win. J jumps to the last alert."});
+        pages.add(new String[]{"Command Center and tactics",
+                "  Build a COMMAND CENTER (Harvester, key 6, one per empire). Its build list unlocks TACTICS and tactic upgrades;\n"
+                        + "  select it to pick the ACTIVE TACTIC. Then press Y (or the Tactic button above the bottom bar) to turn tactics ON.\n"
+                        + "  While ON, an attack order (Ctrl+right-click, or right-click an enemy) first FORMS the selected ships up, then they\n"
+                        + "  MARCH together at the slowest ship's speed and fight with the tactic. Ships the tactic has no place for just attack-move.\n\n"
+                        + "  BULLDOZER: infantry ring the tanks, support behind, snipers at the back; snipers shoot whatever is closest to the tanks.\n"
+                        + "  PINCER: tanks in front, infantry wings on the sides; once the tanks are hurt the wings surround the enemy.\n"
+                        + "     Snipers switch between the nearest and the farthest target every 3 shots.\n"
+                        + "  FLANK: tanks + half the fleet in front, the rest behind a gap. Hurt tanks taunt (again on every recharge) while the\n"
+                        + "     rear half swings round both sides to strike 900 past the tanks.\n"
+                        + "  FOCUS: infantry, then tanks, then snipers; snipers kill hive drones first, then the biggest hull, +50% vs tanks and Hives.\n\n"
+                        + "  UPGRADES: Martyr Charge (Flank), Crippling Line (Pincer), Ramming Plates and Shield Wall (Bulldozer), Replenish (all).\n"
+                        + "  TARGETING (K, or the button in the bottom panel): Nearest, Farthest, Most health, Least health or Random."});
+        pages.add(new String[]{"Hotkeys",
+                "  H Mothership   F2 cycle Ship Stations   B Research Hub   I idle harvesters   Ctrl+A all warships\n"
+                        + "  1-9, 0, -, = build from the selected station / structure / harvester   U tier upgrade\n"
+                        + "  Q E T Z N O skills   Y tactics on/off   K targeting   R auto-retreat   G auto-defense   V rally stations   F / Shift+F rally flag\n"
+                        + "  X stop   C center on selection   J jump to the last alert   Tab galaxy map (Hive)\n"
+                        + "  Space pause   [ ] speed   F5 save   F9 load   Esc menu   F1 tutorial\n\n"
+                        + "Good luck, Commander. Press Enter or click Start to begin."});
+        return pages.toArray(new String[0][]);
+    }
+
+    private void help(ShapeRenderer sr) {
+        String[][] pages = helpPages();
+        helpPage = Math.max(0, Math.min(helpPage, pages.length - 1));
+        float bw = Math.min(W - 40, 960), bh = Math.min(H - 40, 560);
+        overlayBox(sr, bw, bh);
+        float bx0 = (W - bw) / 2, by0 = (H - bh) / 2;
+        float x = bx0 + 24, y = by0 + bh - 22;
+        txt(x, y, "NEBULA DOMINION - How to play", TITLE, 1.4f);
+        aligned(bx0, y, bw - 24, "Page " + (helpPage + 1) + " / " + pages.length, DIM, 0.9f, Align.right);
+        txt(x, y - 36, pages[helpPage][0].toUpperCase(), PAGE_C, 1.15f);
+        wrap(x, y - 66, bw - 48, pages[helpPage][1], Color.WHITE, 0.9f);
+
+        // page dots
+        float dots = pages.length * 16, dx = (W - dots) / 2 + 8;
+        for (int i = 0; i < pages.length; i++) {
+            if (i == helpPage) sr.setColor(ACCENT);
+            else sr.setColor(0.25f, 0.32f, 0.45f, 1f);
+            sr.circle(dx + i * 16, by0 + 62, i == helpPage ? 5 : 4, 12);
+        }
+
+        // Back / Next (Start on the last page) / Skip
+        float btnW = 130, btnH = 34, btnY = by0 + 14;
+        boolean last = helpPage == pages.length - 1;
+        helpButton(sr, bx0 + 20, btnY, btnW, btnH, "< Back", helpPage > 0, () -> helpPage(-1));
+        helpButton(sr, bx0 + bw - btnW - 20, btnY, btnW, btnH, last ? "Start" : "Next >", true, () -> helpPage(+1));
+        helpButton(sr, (W - btnW) / 2, btnY, btnW, btnH, "Skip tutorial", !last, () -> {
+            gs.showHelp = false;
+            helpPage = 0;
+        });
+    }
+
+    private void helpButton(ShapeRenderer sr, float x, float y, float w, float h, String label, boolean enabled, Runnable action) {
+        boolean hov = enabled && hovered(x, y, w, h);
+        if (!enabled) sr.setColor(0.06f, 0.08f, 0.12f, 1f);
+        else sr.setColor(hov ? 0.2f : 0.12f, hov ? 0.32f : 0.2f, hov ? 0.55f : 0.36f, 1f);
+        sr.rect(x, y, w, h);
+        border(sr, x, y, w, h, enabled ? ACCENT : DIM);
+        aligned(x, y + h / 2 + 7, w, label, enabled ? Color.WHITE : DIM, 1f, Align.center);
+        if (enabled) buttons.add(new Btn(x, y, w, h, action));
+    }
+
+    /** "Are you sure?" before surrendering. */
+    private void surrenderConfirm(ShapeRenderer sr) {
+        float bw = 460, bh = 190;
+        overlayBox(sr, bw, bh);
+        float x = (W - bw) / 2, y = (H + bh) / 2;
+        aligned(x, y - 26, bw, "SURRENDER?", World.ALERT, 1.5f, Align.center);
+        aligned(x + 20, y - 70, bw - 40, "Your empire will be eliminated and the game is lost.\nThis cannot be undone. Are you sure?", Color.WHITE, 0.95f, Align.center);
+        float b = 180, gap = 20, by = (H - bh) / 2 + 20, bx = (W - 2 * b - gap) / 2;
+        helpButton(sr, bx, by, b, 36, "Yes, surrender", true, gs.input::surrender);
+        helpButton(sr, bx + b + gap, by, b, 36, "Cancel (Esc)", true, () -> gs.confirmSurrender = false);
+    }
+
+    /** Chat input box above the bottom panel, with the recent chat lines above it. */
+    private void chatBox(ShapeRenderer sr, World w) {
+        GameInput in = gs.input;
+        float bw = Math.min(900, W * 0.6f), bh = 26, bx = 12, by = BOTTOM + 14;
+        // recent chat, newest at the bottom
+        // the last 30 chat lines; 8 are shown, Page Up / Page Down scroll back through the rest
+        List<spacerts.world.Message> all = new ArrayList<>();
+        for (int i = w.messages.size() - 1; i >= 0 && all.size() < 30; i--)
+            if (w.messages.get(i).chat) all.add(0, w.messages.get(i));
+        in.chatScroll = Math.max(0, Math.min(in.chatScroll, all.size() - 8));
+        int end = all.size() - in.chatScroll;
+        List<spacerts.world.Message> lines = all.subList(Math.max(0, end - 8), Math.max(0, end));
+        if (all.size() > 8)
+            txt(bx + bw + 10, by + 40, (in.chatScroll > 0 ? "scrolled back " + in.chatScroll + "  " : "") + "PgUp / PgDn history", DIM, 0.75f);
+        if (!lines.isEmpty()) {
+            float hh = lines.size() * 18 + 8;
+            sr.setColor(0.02f, 0.04f, 0.09f, 0.75f);
+            sr.rect(bx, by + bh + 4, bw, hh);
+            float ly = by + bh + 4 + hh - 6;
+            for (spacerts.world.Message m : lines) {
+                txt(bx + 8, ly, m.text, m.color, fit(m.text, 0.85f, bw - 16));
+                ly -= 18;
+            }
+        }
+        sr.setColor(0.03f, 0.06f, 0.13f, 0.95f);
+        sr.rect(bx, by, bw, bh);
+        border(sr, bx, by, bw, bh, in.chatTeam ? World.GOOD : ACCENT);
+        String prompt = in.chatTeam ? "Say (team): " : "Say (all): ";
+        float pw = width(prompt, 0.9f);
+        txt(bx + 8, by + 18, prompt, in.chatTeam ? World.GOOD : TITLE, 0.9f);
+        String text = in.chatText.toString();
+        float room = bw - 20 - pw;
+        while (text.length() > 0 && width(text, 0.9f) > room) text = text.substring(1); // keep the end in view
+        boolean blink = (System.currentTimeMillis() / 500) % 2 == 0;
+        txt(bx + 8 + pw, by + 18, text + (blink ? "_" : ""), Color.WHITE, 0.9f);
+        txt(bx + bw + 10, by + 18, "Enter send   Esc cancel   /t team", DIM, 0.75f);
     }
 
     private void pauseMenu(ShapeRenderer sr) {

@@ -163,6 +163,18 @@ public class MovementSystem {
         } else u.warpCharge = 0;
     }
 
+    /**
+     * Speed of a unit escorting its Mothership (rallied station, Defender): the Mothership's current speed with its
+     * boost and warp, a little faster while far behind so the formation can close up.
+     */
+    public float followSpeed(Unit u, Unit ms) {
+        float s = ms.speed() * (ms.boosted ? boost(ms) : 1f) * (ms.warping ? WARP_MULT : 1f);
+        if (ms.slowTimer > 0) s *= 0.5f;
+        s = Math.max(s, ms.speed());
+        if (u.hasGoal && u.dist(u.gx, u.gy) > StationRally.CATCH_UP_DIST) s *= StationRally.CATCH_UP_MULT;
+        return s;
+    }
+
     /** Tick counter used to stagger the separation pass. */
     private int frame;
 
@@ -173,16 +185,40 @@ public class MovementSystem {
 
     public void move(Unit u, float dt) {
         if (u.s.stationary) return;
+        if (u.dashTimer > 0) { // Evasive Dash: a fast slide that ignores orders and separation
+            float step = Math.min(dt, u.dashTimer);
+            u.dashTimer -= dt;
+            StarSystem sys = w.systemAt(u.x, u.y);
+            float nx = u.x + u.dashVx * step, ny = u.y + u.dashVy * step;
+            u.x = sys.clampX(nx, ny);
+            u.y = sys.clampY(nx, ny);
+            u.vx = u.vy = 0;
+            return;
+        }
         if (u.hasGoal && w.galaxy.hive) route(u);
         float dvx = 0, dvy = 0;
-        float speed = u.speed();
-        float boost = boost(u);
-        u.boosted = boost > 1f;
-        speed *= boost;
-        if (u.retreating && u.owner.has(spacerts.research.Tech.EMERGENCY_THRUSTERS)) speed *= 1.6f; // damaged ships get away
-        if (u.slowTimer > 0) speed *= 0.5f; // Jump Inhibitors
-        updateWarp(u, dt);
-        if (u.warping) speed *= WARP_MULT;
+        float speed;
+        Unit ms = u.owner.mothership;
+        boolean escort = (u.rallied || u.cls == ShipClass.DEFENDER) && ms != null && !ms.dead && u != ms;
+        if (escort) { // rallied stations and Defenders keep pace with the Mothership (boosts and warp included)
+            speed = followSpeed(u, ms);
+            if (u.cls == ShipClass.DEFENDER) speed = Math.max(speed, u.speed());
+            u.boosted = ms.boosted;
+            u.warping = ms.warping;
+            u.warpCharge = 0;
+        } else {
+            speed = u.speed();
+            float boost = boost(u);
+            u.boosted = boost > 1f;
+            speed *= boost;
+            if (u.retreating && u.owner.has(spacerts.research.Tech.EMERGENCY_THRUSTERS)) speed *= 1.6f; // damaged ships get away
+            if (u.slowTimer > 0) speed *= 0.5f; // Jump Inhibitors
+            if (u.ghostTimer > 0) speed *= UnitBehavior.GHOST_SPEED; // Ghost Drive
+            speed *= u.slowMult; // Crippling Line
+            if (u.martyrTarget != null) speed *= 3f; // Martyr Charge
+            updateWarp(u, dt);
+            if (u.warping) speed *= WARP_MULT;
+        }
         if (u.hasGoal) {
             float dx = u.gx - u.x, dy = u.gy - u.y;
             float d = (float) Math.hypot(dx, dy);

@@ -8,6 +8,17 @@ import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import spacerts.screens.MenuScreen;
 
 public class SpaceRtsGame extends Game {
+    /**
+     * Reads the cursor in window coordinates (top-left origin), even when it is just outside the window (over the title
+     * bar or the taskbar), into out[0..1]. Returns false when unavailable or the window is not focused. Set by the
+     * desktop launcher; null elsewhere (input then falls back to Gdx.input).
+     */
+    public interface CursorProbe {
+        boolean read(float[] out);
+    }
+
+    public static CursorProbe cursor;
+
     public SpriteBatch batch;
     public ShapeRenderer shapes;
     public BitmapFont font;

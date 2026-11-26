@@ -17,7 +17,8 @@ public class Faction {
     public final int id;
     public final String name;
     public final Color color;
-    public final Kind kind;
+    /** Not final: a human who leaves a LAN game is handed to a bot. */
+    public Kind kind;
 
     /** Stockpiles are doubles: endgame economies (giant asteroids, refinement) reach millions. */
     public double energy, metal;
@@ -28,6 +29,10 @@ public class Faction {
     public Tech researching;
     public float researchProgress;
     public boolean eliminated;
+    /** Alliance: factions sharing a non-zero team are allies (shared vision, no friendly fire). 0 = no team. */
+    public int team;
+    /** Bot tuning for rivals (income, aggression, ship cap). */
+    public Difficulty difficulty = Difficulty.NORMAL;
 
     public Unit mothership, hub;
     public int popUsed, popCap;
@@ -51,6 +56,27 @@ public class Faction {
 
     /** Player automation: idle ships defend your bases, harvesters flee raids, damaged ships retreat to Menders. */
     public boolean autoDefense = true;
+    /** Rally Stations (V on the Mothership): stations hold hex-ring slots around the Mothership and move at its speed. */
+    public boolean rallyStations;
+    /** Command Center: unlocked tactics, the active one, and owned tactic upgrades. */
+    public final EnumSet<spacerts.units.Tactic> tactics = EnumSet.noneOf(spacerts.units.Tactic.class);
+    public spacerts.units.Tactic activeTactic;
+    public final EnumSet<spacerts.units.TacticUpgrade> tacticUps = EnumSet.noneOf(spacerts.units.TacticUpgrade.class);
+    /** Last tactical attack destination (Replenish sends replacements there). */
+    public boolean hasTacticTarget;
+    public float tacticX, tacticY;
+    /** Replenish: replacement ships per class still owed to the last tactical attack. */
+    public final int[] replenish = new int[ShipClass.values().length];
+    /** Replenish: formation ships lost per class not yet re-queued (a squad is re-queued once all of it is lost). */
+    public final int[] replenishLost = new int[ShipClass.values().length];
+
+    public boolean has(spacerts.units.TacticUpgrade u) { return tacticUps.contains(u); }
+    /** Cheats (single player): unlocked by the activation code; the toggles each cheat code flips. */
+    public boolean cheatsUnlocked, cheatsUsed, godMode, noFog, warpTen, fastResearch, synergy, noHousing, noCooldowns, fastDecay, noDefeat;
+    /** Upkeep weight (ship housing + 4 per station), recomputed every tick with the population. */
+    public int upkeepPoints;
+    /** Smoothed metal per second spent on repairs (HUD), and when the last out-of-metal warning went out. */
+    public float repairSpend, repairSpentTick, lastRepairAlert = -999;
     public float lastSniperAlert = -999;
 
     public Faction(int id, String name, Color color, Kind kind) {
@@ -62,6 +88,15 @@ public class Faction {
 
     public boolean isMajor() { return kind == Kind.PLAYER || kind == Kind.RIVAL; }
     public boolean isPlayer() { return kind == Kind.PLAYER; }
+
+    /** True when the two factions fight each other: different factions not sharing a non-zero team. */
+    public boolean hostileTo(Faction o) {
+        return o != this && (team == 0 || o.team != team);
+    }
+
+    public boolean alliedWith(Faction o) {
+        return !hostileTo(o);
+    }
 
     public boolean has(Tech t) { return techs.contains(t); }
 

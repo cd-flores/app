@@ -30,7 +30,13 @@ public class Unit {
     public float anchorX, anchorY;
 
     // combat
-    public float cooldown, lastFired = -99, lastHit = -99, acquireTimer, abilityCd;
+    public float cooldown, lastFired = -99, lastHit = -99, acquireTimer;
+    /** Seconds until each ability (by ordinal) can be used again. */
+    public final float[] abilityCds = new float[Ability.values().length];
+    /** Ghost Drive (scouts): cloaked, faster and unable to fire while > 0. */
+    public float ghostTimer;
+    /** Evasive Dash (snipers): sliding backward at (dashVx, dashVy) while > 0. */
+    public float dashTimer, dashVx, dashVy;
     public float tauntTimer, forcedTimer;
     public Unit forcedTarget;
 
@@ -92,6 +98,22 @@ public class Unit {
     public float postX, postY;
     /** Upgrade tier of a Mothership or Ship Factory (1-3); tier 3 marks the Pirate Citadel. */
     public int tier = 1;
+    /** Rally Stations: this station holds the formation slot (slotX, slotY) around its Mothership this tick. */
+    public boolean rallied;
+    /** Tactics: the formation this ship belongs to (0 = none), and its role slot is kept by the TacticsSystem. */
+    public int formation;
+    /** Which enemy it picks among those in reach. */
+    public Targeting targeting = Targeting.NEAREST;
+    /** Shots fired (Pincer snipers switch nearest / farthest every 3). */
+    public int shotCount;
+    /** Extra slow (Crippling Line): speed x slowMult while slowMultTimer > 0. */
+    public float slowMult = 1f, slowMultTimer;
+    /** Martyr Charge: charging this enemy sniper until martyrTimer runs out, then exploding. */
+    public Unit martyrTarget;
+    public float martyrTimer;
+    /** Ramming Plates: last time this ship was rammed. */
+    public float lastRammed = -99;
+    public float slotX, slotY;
 
     // player automation (AutoDefense)
     /** Sent out by auto-defense (autoTask) or pulled back to a Mender (retreating); returns to homeX/Y afterwards. */
@@ -171,8 +193,9 @@ public class Unit {
         return cls == ShipClass.COLONY && home != null ? home.shieldPoints : 0;
     }
     public float damage() { return s.damage * owner.dmgMult(); }
-    public boolean armed() { return s.damage > 0; }
-    public boolean cloaked(float time) { return s.cloak && time - lastFired > 3f; }
+    /** Can fire right now (scouts in Ghost Drive can't). */
+    public boolean armed() { return s.damage > 0 && ghostTimer <= 0; }
+    public boolean cloaked(float time) { return (s.cloak && time - lastFired > 3f) || ghostTimer > 0; }
 
     public float dist(Unit o) { return (float) Math.hypot(o.x - x, o.y - y); }
     public float dist(float px, float py) { return (float) Math.hypot(px - x, py - y); }
