@@ -232,11 +232,12 @@ public class Hud {
         sr.end();
         flushTexts();
 
-        if (gs.showHelp || gs.menuOpen || gs.confirmSurrender || w.gameOver || victoryShowing()) {
+        if (gs.showHelp || gs.menuOpen || gs.confirmSurrender || w.gameOver || w.matchOver || victoryShowing()) {
             buttons.clear();
             sr.begin(ShapeRenderer.ShapeType.Filled);
             if (gs.showHelp) help(sr);
             else if (w.gameOver) gameOver(sr, w);
+            else if (w.matchOver && !gs.menuOpen) matchResult(sr, w);
             else if (gs.confirmSurrender) surrenderConfirm(sr);
             else if (victoryShowing() && !gs.menuOpen) victory(sr, w);
             else pauseMenu(sr);
@@ -1486,6 +1487,20 @@ public class Hud {
 
     public boolean victoryShowing() {
         return gs.world.ascended && !victoryDismissed;
+    }
+
+    /** The match is decided: victory (or who won), the match time, and what to do next. */
+    private void matchResult(ShapeRenderer sr, World w) {
+        float bw = 560, bh = 230;
+        overlayBox(sr, bw, bh);
+        float x = (W - bw) / 2, y = (H + bh) / 2;
+        Faction win = w.winner;
+        boolean won = win != null && !w.player.eliminated && !w.player.hostileTo(win);
+        String who = win == null ? "Nobody" : win.team != 0 && w.countTeam(win.team) > 1 ? "Team " + win.team : win.name;
+        aligned(x, y - 30, bw, won ? "VICTORY" : who.toUpperCase() + " HAS WON", won ? World.GOOD : World.ALERT, 1.6f, Align.center);
+        aligned(x, y - 80, bw, (won ? "Every enemy empire has fallen. " : "") + "Match time " + clock(w.time) + ".", Color.WHITE, 1.05f, Align.center);
+        aligned(x, y - 140, bw, "Press Enter to return to the main menu", DIM, 1f, Align.center);
+        if (!gs.networked()) aligned(x, y - 170, bw, "Press C to keep playing", DIM, 1f, Align.center);
     }
 
     private void gameOver(ShapeRenderer sr, World w) {

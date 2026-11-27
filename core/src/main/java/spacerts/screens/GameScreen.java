@@ -126,7 +126,7 @@ public class GameScreen extends ScreenAdapter implements Lockstep.Runner {
                 float h = dt / steps;
                 for (int i = 0; i < steps; i++) world.update(h);
                 // long campaigns: autosave every 5 minutes of game time
-                if (world.time >= nextAutosave && !world.gameOver) {
+                if (world.time >= nextAutosave && !world.gameOver && !world.matchOver) {
                     nextAutosave = world.time + AUTOSAVE_EVERY;
                     try {
                         SaveManager.autosave(world);

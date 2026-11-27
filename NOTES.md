@@ -4,7 +4,7 @@ Context for picking this project up on another computer. The README describes th
 
 ## Status
 - Branch: `feature/hive-galaxy` (not merged into `main` yet).
-- Build and tests: `./gradlew :core:test --offline` (136 tests, all passing). Run the game with `./gradlew lwjgl3:run` (or `run.bat`).
+- Build and tests: `./gradlew :core:test --offline` (138 tests, all passing). Run the game with `./gradlew lwjgl3:run` (or `run.bat`).
 - Java 17+, libGDX (LWJGL3 desktop). There is no Python on the original machine, so edits were made by hand or with sed/awk.
 
 ## Ground rules of the codebase
@@ -45,6 +45,8 @@ Context for picking this project up on another computer. The README describes th
     - Pyre (`ShipClass.PYRE`, Station II): short-range splash flamer. `Spec.burn(dps, s)` sets `Unit.burnTime` / `burnDps` in `CombatSystem.hit` (splash victims too); `UnitBehavior` ticks it through `applyDamage(..., piercing, null)`. `Spec.antiSwarm` multiplies damage against Drones and Broodlings (x4). Tactics role INFANTRY; bots build it.
     - Buoys are not units: `Body.buoyRings` / `buoyTimer` (saved). `EconomySystem.launchBuoys` adds a ring every 300 s up to 5; `Body.buoy(k, i)` gives positions; `World.updateVision` reveals them (300) for the owner and allies; rings reset when the colony is gone.
     - `AutoDefense.retreats` skips factions with an AI (`owner.ai != null`).
+
+13. **Tougher economy structures, match end**: Research Outpost 1750 hull, Solar Collector 4500, Asteroid Miner 5000 (5x). When `World.eliminate` decides a victory it also sets `World.matchOver` and `winner` (saved); `World.update` then returns at once on every machine, and the HUD shows the result (Enter: menu; C: keep playing in single player, which sets `noVictory`). Your own defeat does not freeze the world (other LAN players play on); it keeps the old defeat screen.
 
 ## Performance (stress test)
 - `./gradlew :core:stressTest --offline` (`StressTest`, tagged `stress`, left out of `test`) times `World.update` with more and more near-unkillable ships and writes `core/build/reports/stress/stress-*.csv`. It asserts only correctness (no NaN), never speed.

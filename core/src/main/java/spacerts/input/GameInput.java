@@ -498,6 +498,15 @@ public class GameInput extends InputAdapter {
             gs.toMenu();
             return true;
         }
+        if (w.matchOver && !gs.menuOpen) { // the match is decided: Enter leaves, C keeps playing (single player)
+            if (key == Input.Keys.ENTER) gs.toMenu();
+            else if (key == Input.Keys.C && !gs.networked()) {
+                w.matchOver = false;
+                w.noVictory = true; // don't end it again
+                w.notify(w.player, "Playing on. The pirates keep coming.", World.INFO);
+            }
+            return true;
+        }
         if (gs.menuOpen) {
             if (key == Input.Keys.ESCAPE) gs.menuOpen = false;
             else if (key == Input.Keys.M) gs.toMenu();

@@ -136,6 +136,12 @@ class MultiplayerTest {
         World w = make(threeWay(1, 1, 2));
         w.eliminate(w.factions.get(2));
         assertTrue(w.victoryAnnounced, "the last enemy falling wins it for the team");
+        assertTrue(w.matchOver, "and ends the match");
+        assertNotNull(w.winner);
+        assertEquals(1, w.winner.team, "the team won");
+        float t = w.time;
+        w.update(spacerts.net.Lockstep.STEP);
+        assertEquals(t, w.time, 1e-6, "frozen on every machine");
         World back = SaveManager.fromJson(SaveManager.toJson(w));
         assertEquals(3, back.rivalCount + 1);
         assertEquals(1, back.factions.get(1).team);

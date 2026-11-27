@@ -133,10 +133,10 @@ public enum ShipClass {
     CC_SHIELD_WALL(new Spec("Shield Wall", "BULLDOZER UPGRADE. " + TacticUpgrade.SHIELD_WALL.desc).cost(700, 700, 0).build(50).internal()),
     CC_REPLENISH(new Spec("Replenish", "TACTICS UPGRADE. " + TacticUpgrade.REPLENISH.desc).cost(1000, 1000, 0).rare(0, 0, 0, 0, 1).build(70).internal()),
     SOLAR(new Spec("Solar Collector", "Built beside a star. Produces energy on its own - no hauling. Up to 2 per star.")
-            .cost(250, 200, 0).hp(900).shield(200, 6).armor(0.2f).vision(450).radius(18).build(25)
+            .cost(250, 200, 0).hp(4500).shield(200, 6).armor(0.2f).vision(450).radius(18).build(25)
             .type(STRUCTURE).stationary()),
     MINER(new Spec("Asteroid Miner", "Built beside an asteroid or metal-rich planet. Mines metal on its own, moving on to nearby asteroids as they run out.")
-            .cost(200, 250, 0).hp(1000).shield(150, 5).armor(0.25f).vision(450).radius(18).build(25)
+            .cost(200, 250, 0).hp(5000).shield(150, 5).armor(0.25f).vision(450).radius(18).build(25)
             .type(STRUCTURE).stationary()),
     // ---- structures unlocked by Mothership tiers (and the Hive's conquest buildings)
     BEACON(new Spec("Claim Beacon", "Claims the hex it stands in: +0.5 energy and metal per second, wide vision, and no pirate stronghold can rise in or next to it. One per hex; not while a pirate stronghold stands there.")
@@ -161,8 +161,8 @@ public enum ShipClass {
             .cost(150, 250, 0).build(20).radius(16).type(STRUCTURE).stationary().internal()),
     DEF_SHIELD(new Spec("Shield Upgrade", "Planet upgrade (1 of 5 points): +400 planetary shield and faster shield recharge on one of your colonies.")
             .cost(250, 150, 0).build(20).radius(16).type(STRUCTURE).stationary().internal()),
-    OUTPOST(new Spec("Research Outpost", "Extracts rare items from its planet over time. Fragile.")
-            .hp(350).armor(0.1f).vision(450).radius(12).type(STRUCTURE).stationary().internal()),
+    OUTPOST(new Spec("Research Outpost", "Extracts rare items from its planet over time.")
+            .hp(1750).armor(0.1f).vision(450).radius(12).type(STRUCTURE).stationary().internal()),
     COLONY(new Spec("Colony", "Settled world. Provides housing, slowly produces energy and metal, and is a resource drop-off point. Harvesters can build defenses here.")
             .hp(1500).shield(300, 6).armor(0.3f).vision(750).radius(30).type(STRUCTURE).stationary()
             .internal());

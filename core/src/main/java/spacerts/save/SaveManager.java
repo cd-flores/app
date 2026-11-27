@@ -32,7 +32,8 @@ public final class SaveManager {
         public long seed;
         public int rivals, wave, nextId, initialAsteroids;
         public float time, nextWave;
-        public boolean victoryAnnounced;
+        public boolean victoryAnnounced, matchOver;
+        public int winner = -1;
         public String difficulty;
         public FactionData[] factions;
         public BodyData[] bodies;
@@ -134,6 +135,8 @@ public final class SaveManager {
         d.nextId = w.nextId;
         d.initialAsteroids = w.initialAsteroids;
         d.victoryAnnounced = w.victoryAnnounced;
+        d.matchOver = w.matchOver;
+        d.winner = w.winner != null ? w.winner.id : -1;
         d.difficulty = w.difficulty.name();
         d.explored = w.player.vision.explored.clone();
         d.pirateRespawn = w.pirateRespawn;
@@ -362,6 +365,8 @@ public final class SaveManager {
         w.threats.wave = d.wave;
         w.initialAsteroids = d.initialAsteroids;
         w.victoryAnnounced = d.victoryAnnounced;
+        w.matchOver = d.matchOver;
+        if (d.winner >= 0) for (spacerts.world.Faction f : w.factions) if (f.id == d.winner) w.winner = f;
 
         for (int i = 0; i < d.factions.length && i < w.factions.size(); i++) {
             Faction f = w.factions.get(i);

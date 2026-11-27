@@ -177,6 +177,42 @@ class UnitsTest {
     }
 
     @Test
+    void economyStructuresAreFiveTimesTougher() {
+        assertEquals(1750, ShipClass.OUTPOST.s.hp, 0.01, "Research Outpost 350 -> 1750");
+        assertEquals(4500, ShipClass.SOLAR.s.hp, 0.01, "Solar Collector 900 -> 4500");
+        assertEquals(5000, ShipClass.MINER.s.hp, 0.01, "Asteroid Miner 1000 -> 5000");
+    }
+
+    @Test
+    void theMatchEndsWhenTheLastEnemyEmpireFalls() {
+        World w = new World(GameSetup.skirmish(91, 2, Difficulty.NORMAL));
+        GalaxyGenerator.generate(w);
+        w.flushPending();
+        java.util.List<Faction> rivals = new java.util.ArrayList<>();
+        for (Faction f : w.factions) if (f.kind == Faction.Kind.RIVAL) rivals.add(f);
+        assertEquals(2, rivals.size());
+
+        rivals.get(0).mothership.kill(false);
+        run(w, 0.5f);
+        assertTrue(rivals.get(0).eliminated);
+        assertFalse(w.matchOver, "one enemy is still standing");
+
+        rivals.get(1).mothership.kill(false);
+        run(w, 0.5f);
+        assertTrue(w.matchOver, "the last enemy fell");
+        assertSame(w.player, w.winner);
+        assertFalse(w.gameOver, "that's a win, not a defeat");
+        float t = w.time;
+        run(w, 2);
+        assertEquals(t, w.time, 1e-6, "the match is frozen");
+
+        World back = SaveManager.fromJson(SaveManager.toJson(w));
+        assertTrue(back.matchOver, "saved as finished");
+        assertNotNull(back.winner);
+        assertEquals(w.player.id, back.winner.id);
+    }
+
+    @Test
     void botsDontAutoRetreatButPlayersDo() {
         World w = make();
         clearField(w);

@@ -77,6 +77,10 @@ public class World {
     public int nextId = 1;
     public int initialAsteroids;
     public boolean gameOver, victoryAnnounced;
+    /** The last enemy empire has fallen: the match is decided and the simulation stops (same tick on every machine). */
+    public boolean matchOver;
+    /** The empire (or a member of the team) that won, once matchOver. */
+    public Faction winner;
     public float alertX, alertY, alertTime = -99;
     private float visionTimer;
 
@@ -156,6 +160,7 @@ public class World {
     // ------------------------------------------------------------------ tick
 
     public void update(float dt) {
+        if (matchOver) return; // the match is decided: everything stops
         time += dt;
         galaxy.indexBodies(bodies);
         hash.rebuild(units);
@@ -556,13 +561,15 @@ public class World {
         }
         if (first == null || !oneSide) return;
         victoryAnnounced = true;
+        matchOver = true;
+        winner = first;
         String who = first.team != 0 && countTeam(first.team) > 1 ? "Team " + first.team : first.name;
         if (!player.eliminated && !player.hostileTo(first))
-            announce("VICTORY! " + who + " rules the galaxy... but the pirates keep coming.", GOOD);
+            announce("VICTORY! " + who + " rules the galaxy.", GOOD);
         else announce(who + " has won the game.", ALERT);
     }
 
-    private int countTeam(int team) {
+    public int countTeam(int team) {
         int n = 0;
         for (Faction o : factions) if (o.isMajor() && o.team == team) n++;
         return n;

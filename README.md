@@ -43,8 +43,8 @@ Requires a JDK (17 or newer; developed on 25). The first build downloads Gradle 
   | 1 | **Ship Station**: builds every warship, Colony Ship and Mining Barge. **At most 2.** Mobile (half the Mothership's speed). | Click open space |
   | 2 | **Research Hub** (only one). Mobile (half the Mothership's speed). | Click open space |
   | 3 | **Repair Station** (800E / 750M): repairs every ally within 400; damaged ships retreat to it. No housing. Mobile (half the Mothership's speed). | Click open space |
-  | 4 | **Solar Collector**: produces 6 energy/s by itself, max 2 per star | Click a star |
-  | 5 | **Asteroid Miner**: mines 5 metal/s by itself, moving on to the next asteroid within 450 as each runs out, and once the whole field is dry it slowly crawls (speed 15) to the nearest asteroid clump in its system (4/s forever on a metal planet); one per field | Click an asteroid or metal-rich planet |
+  | 4 | **Solar Collector** (4500 hull): produces 6 energy/s by itself, max 2 per star | Click a star |
+  | 5 | **Asteroid Miner** (5000 hull): mines 5 metal/s by itself, moving on to the next asteroid within 450 as each runs out, and once the whole field is dry it slowly crawls (speed 15) to the nearest asteroid clump in its system (4/s forever on a metal planet); one per field | Click an asteroid or metal-rich planet |
   | 6 | **Command Center** (one per empire): unlocks battle tactics and their upgrades, picks the active tactic. Mobile (half the Mothership's speed). | Click open space |
   | 7 | **Claim Beacon** (Hive only): claims the hex it stands in | Click open space |
   | 8 | **Defense Platform** (Mothership II): standalone heavy turret | Click open space |
@@ -121,7 +121,7 @@ Requires a JDK (17 or newer; developed on 25). The first build downloads Gradle 
 - **Multiplayer** (classic galaxy, up to 4 empires): host a game and fill the four seats with LAN players, bots or nobody. Native garrisons and pirate raids that grow forever join every game.
   - **Joining:** other players open **Multiplayer → Join LAN Game**. Games on the network appear in the list on their own, or you can type the host's IP (the lobby shows it). The game uses TCP port 47778 and UDP port 47777 for discovery.
   - **To play alone against bots,** host, add bots and start. Nobody needs to join, and the game runs offline with saves enabled.
-  - **Teams:** each seat picks No team or Team 1-4. Allies share vision, never shoot each other, and win together. Players choose their own team and color; the host sets the bots'.
+  - **Teams:** each seat picks No team or Team 1-4. Allies share vision, never shoot each other, and win together. **The match ends** when every enemy empire is eliminated (its Mothership destroyed): the game freezes on a VICTORY screen. Press Enter for the main menu, or C to keep playing (single player). Players choose their own team and color; the host sets the bots'.
   - **Bots** each have their own difficulty (see below). They **sit still for the first 8 minutes**. Their attack grace period (first strike time) still counts from the start of the game.
   - **LAN play** is deterministic lockstep: only orders travel over the network. If someone lags, the game shows "Waiting for players…". A player who leaves is replaced by a Normal bot. Pause and speed are shared. Saving is off in games with more than one human.
 - **Campaign: the Hive** (formerly the pirates-only mode): a long campaign with no rival empires, meant to be played over many sessions. Instead:
