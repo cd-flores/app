@@ -35,7 +35,7 @@ public class Body {
     public float x, y, radius;
     /** Doubles so giant asteroids holding millions still register a miner's tiny per-tick bites. */
     public double metal, maxMetal;
-    /** A giant asteroid holding millions of metal. */
+    /** A giant asteroid holding a huge (finite) metal store. */
     public boolean giant;
     public String name = "";
     public final Color color = new Color(1, 1, 1, 1);
@@ -52,6 +52,25 @@ public class Body {
     public static final float SHIELD_PER_POINT = 400f, REGEN_PER_POINT = 8f;
 
     public int defensePoints() { return turretPoints + shieldPoints; }
+
+    /** Fortified worlds hold fire until attacked: natives only fight factions that hit them this recently (s). */
+    public static final float PROVOKE_MEMORY = 30f;
+    /** Game time each faction (by id) last hit this planet's natives; null until someone does. */
+    public float[] provoked;
+
+    public void provoke(Faction f, float time) {
+        if (provoked == null || provoked.length <= f.id) {
+            float[] p = new float[Math.max(16, f.id + 1)];
+            java.util.Arrays.fill(p, -1e9f);
+            if (provoked != null) System.arraycopy(provoked, 0, p, 0, provoked.length);
+            provoked = p;
+        }
+        provoked[f.id] = time;
+    }
+
+    public boolean provokedBy(Faction f, float time) {
+        return provoked != null && f.id < provoked.length && time - provoked[f.id] < PROVOKE_MEMORY;
+    }
 
     public Unit colony, outpost, shipyard;
     public final List<Unit> turrets = new ArrayList<>();
@@ -88,8 +107,29 @@ public class Body {
         return kind == Kind.PLANET && type.rare != null && (outpost == null || outpost.dead) && !guarded();
     }
 
+    /**
+     * Stars hold a finite energy deposit in metal / maxMetal (the same saved fields asteroids use).
+     * maxMetal 0 means a star from an older save: it never runs out.
+     */
+    public boolean finiteStar() { return kind == Kind.STAR && maxMetal > 0; }
+
+    /** A star whose energy deposit is used up: it no longer feeds harvesters or Solar Collectors. */
+    public boolean burntOut() { return finiteStar() && metal <= 0.01; }
+
+    /** Takes up to amt energy from a finite star; returns what was actually there. Older stars give it all. */
+    public float drainStar(float amt) {
+        if (!finiteStar()) return amt;
+        float got = (float) Math.min(amt, Math.max(0, metal));
+        metal -= got;
+        if (metal < 0.01) metal = 0;
+        return got;
+    }
+
+    /** Share of a finite star's deposit left (1 for older, endless stars). */
+    public float starLeft() { return finiteStar() ? (float) (metal / maxMetal) : 1f; }
+
     public boolean harvestable() {
-        return !dead && (kind == Kind.STAR || kind == Kind.ASTEROID || kind == Kind.WRECK || (kind == Kind.PLANET && type.minable));
+        return !dead && ((kind == Kind.STAR && !burntOut()) || kind == Kind.ASTEROID || kind == Kind.WRECK || (kind == Kind.PLANET && type.minable));
     }
 
     /** Base resource per second while a harvester is gathering. */

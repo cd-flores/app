@@ -121,6 +121,7 @@ public class CombatSystem {
                 break;
             }
         t.lastHit = w.time;
+        if (src != null && t.owner.kind == Faction.Kind.NATIVES && t.home != null) t.home.provoke(src.owner, w.time); // the planet fights back now
         if (t.shield > 0) {
             float absorbed = Math.min(t.shield, dmg);
             t.shield -= absorbed;

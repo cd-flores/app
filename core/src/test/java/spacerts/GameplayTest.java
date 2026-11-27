@@ -238,8 +238,9 @@ class GameplayTest {
         assertFalse(a.armed(), "can't fire while ghosting");
         assertFalse(b.cloaked(w.time));
         float ax = a.x, bx = b.x;
-        a.command(Order.MOVE, a.x + dir * 3000, a.y);
-        b.command(Order.MOVE, b.x + dir * 3000, b.y);
+        // the same destination, so both get the same travel boost (if any) and only the drive differs
+        a.command(Order.MOVE, a.x + dir * 3000, ms.y + 650);
+        b.command(Order.MOVE, b.x + dir * 3000, ms.y + 650);
         run(w, 4);
         assertTrue(Math.abs(a.x - ax) > Math.abs(b.x - bx) * 1.4f, "faster: " + Math.abs(a.x - ax) + " vs " + Math.abs(b.x - bx));
 
@@ -334,15 +335,10 @@ class GameplayTest {
         assertNull(w.production.enqueue(st, ShipClass.WISP));
         assertNull(w.production.enqueue(st, ShipClass.WISP));
         double e1 = p.energy, m1 = p.metal;
-        int paidE = 0, paidM = 0;
-        for (int i = 0; i < st.queue.items.size(); i++) {
-            paidE += ShipClass.WISP.s.energy;
-            paidM += ShipClass.WISP.s.metal;
-        }
+        double paidE = 5000 - e1, paidM = 5000 - m1; // what the two Wisps really cost (log pricing included)
         CommandExecutor.apply(w, new Command(Command.Type.DESTROY, p.id).unit(st));
         run(w, 0.1f);
         assertTrue(st.dead);
-        // the second Wisp may have cost a little more (log pricing), so allow for that
         assertEquals(e1 + paidE + ShipClass.FACTORY.s.energy / 4, p.energy, 15);
         assertEquals(m1 + paidM + ShipClass.FACTORY.s.metal / 4, p.metal, 15);
     }

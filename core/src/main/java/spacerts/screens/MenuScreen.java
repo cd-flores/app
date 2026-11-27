@@ -611,7 +611,7 @@ public class MenuScreen extends ScreenAdapter {
             label(x0, y, half, 46, "Seed  " + l.seed, Color.WHITE, 1.15f);
             label(x0 + half + gap, y, half, 46, "Pirate threat  " + l.pirates.title, difficultyColor(l.pirates), 1.15f);
         }
-        label(x0, y - 34, tw, 20, "Bots wait 3 minutes before they move. Bot ship caps: Easy 64, Normal 120, Hard 200, Insane unlimited.", DIM, 0.95f);
+        label(x0, y - 34, tw, 20, "Bots wait 8 minutes before they move. Bot ship caps: Easy 64, Normal 120, Hard 200, Insane unlimited.", DIM, 0.95f);
 
         y -= 100;
         if (hosting) {

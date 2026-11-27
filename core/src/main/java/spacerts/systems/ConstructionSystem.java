@@ -15,6 +15,9 @@ import spacerts.world.World;
 public class ConstructionSystem {
     private final World w;
 
+    /** Most Ship Stations an empire may have (alive plus under construction). */
+    public static final int MAX_STATIONS = 2;
+
     public ConstructionSystem(World w) {
         this.w = w;
     }
@@ -26,6 +29,8 @@ public class ConstructionSystem {
         if (c.s.msTier > f.msTier() && !f.synergy) return "Requires Mothership tier " + ProductionSystem.roman(c.s.msTier);
         if (c == ShipClass.HUB && ((f.hub != null && !f.hub.dead) || building(f, ShipClass.HUB, null) > 0))
             return "Only one Research Hub allowed";
+        if (c == ShipClass.FACTORY && w.count(f, ShipClass.FACTORY) + building(f, ShipClass.FACTORY, null) >= MAX_STATIONS)
+            return "At most " + MAX_STATIONS + " Ship Stations";
         if (c == ShipClass.COMMAND && (w.count(f, ShipClass.COMMAND) > 0 || building(f, ShipClass.COMMAND, null) > 0))
             return "Only one Command Center";
         if (c == ShipClass.ASCENSION && (w.count(f, ShipClass.ASCENSION) > 0 || building(f, ShipClass.ASCENSION, null) > 0))
@@ -62,6 +67,7 @@ public class ConstructionSystem {
         }
         if (c == ShipClass.SOLAR) {
             if (body == null || body.dead || body.kind != Body.Kind.STAR) return "Solar Collectors must be built next to a star";
+            if (body.burntOut()) return body.name + " has burnt out";
             if (extractorsAt(body, ShipClass.SOLAR) >= SOLAR_PER_STAR) return body.name + " already has " + SOLAR_PER_STAR + " Solar Collectors";
         }
         if (c == ShipClass.MINER) {

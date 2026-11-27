@@ -83,6 +83,8 @@ public final class SaveManager {
         public int link = -1, side = -1; // jump gates: index of the paired gate, hex side
         public int lootNeutron, lootExotic;
         public boolean giant;
+        /** Fortified worlds: when each faction last attacked the natives here (null: never). */
+        public float[] provoked;
     }
 
     public static class UnitData {
@@ -224,6 +226,7 @@ public final class SaveManager {
             bd.maxGuards = b.maxGuards;
             bd.turretPoints = b.turretPoints;
             bd.shieldPoints = b.shieldPoints;
+            bd.provoked = b.provoked;
             bd.cr = b.color.r;
             bd.cg = b.color.g;
             bd.cb = b.color.b;
@@ -410,6 +413,7 @@ public final class SaveManager {
             b.maxGuards = bd.maxGuards;
             b.turretPoints = bd.turretPoints + bd.defenseLevel;
             b.shieldPoints = bd.shieldPoints;
+            b.provoked = bd.provoked;
             b.color.set(bd.cr, bd.cg, bd.cb, 1f);
             b.side = bd.side;
             b.lootNeutron = bd.lootNeutron;

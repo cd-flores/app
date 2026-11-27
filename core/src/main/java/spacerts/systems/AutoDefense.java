@@ -176,13 +176,13 @@ public class AutoDefense {
     private boolean repairing(Unit u) {
         Unit m = nearestMender(u.owner, u, 3000);
         if (m != null && m.dist(u) - u.radius < m.s.healRange) return true;
-        return w.nearestRepairPoint(u.owner, u.x, u.y, UnitBehavior.REPAIR_RANGE) != null;
+        return w.nearestRepairPoint(u.owner, u.x, u.y, UnitBehavior.REPAIR_RANGE, false) != null;
     }
 
     /** Orders u to the nearest Mender or base. Returns false if there is nowhere to go. */
     private boolean sendToRepair(Unit u) {
         Unit mender = nearestMender(u.owner, u, 3000);
-        Unit dock = w.nearestRepairPoint(u.owner, u.x, u.y, 6000);
+        Unit dock = w.nearestRepairPoint(u.owner, u.x, u.y, 6000, false); // colonies no longer repair ships
         if (mender == null && dock == null) return false;
         float a = w.rng.nextFloat() * 6.283f;
         if (mender != null && (dock == null || mender.dist(u) < dock.dist(u))) {

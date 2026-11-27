@@ -38,6 +38,16 @@ public enum Difficulty {
         this.shipCap = shipCap;
     }
 
+    /** Seconds between a bot's decisions: slow on Easy, quick on Insane. */
+    public float thinkInterval() {
+        switch (this) {
+            case EASY: return 20f;
+            case NORMAL: return 10f;
+            case HARD: return 5f;
+            default: return 1.5f;
+        }
+    }
+
     public Difficulty easier() { return values()[Math.max(0, ordinal() - 1)]; }
     public Difficulty harder() { return values()[Math.min(values().length - 1, ordinal() + 1)]; }
     /** Cycles through all levels, wrapping around. */

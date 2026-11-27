@@ -646,10 +646,15 @@ public class World {
 
     /** Nearest colony, factory, shipyard or mothership of f within max (edge distance), or null. */
     public Unit nearestRepairPoint(Faction f, float x, float y, float max) {
+        return nearestRepairPoint(f, x, y, max, true);
+    }
+
+    /** As above; with colonies false, colonies are skipped (they no longer repair docked ships). */
+    public Unit nearestRepairPoint(Faction f, float x, float y, float max, boolean colonies) {
         Unit best = null;
         float bd = max;
         for (Unit u : f.docks) {
-            if (u.dead) continue;
+            if (u.dead || (!colonies && u.cls == ShipClass.COLONY)) continue;
             float d = u.dist(x, y) - u.radius;
             if (d < bd) {
                 bd = d;

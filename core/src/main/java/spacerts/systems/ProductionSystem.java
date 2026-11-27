@@ -198,6 +198,12 @@ public class ProductionSystem {
 
     /** Price growth: price = base x (1 + PRICE_K x ln(1 + copies)). */
     public static final float PRICE_K = 0.35f;
+    /** Bulwarks and snipers get pricier twice as fast per copy. */
+    public static final float HEAVY_PRICE_K = 0.7f;
+
+    public static float priceK(ShipClass c) {
+        return c == ShipClass.BULWARK || c == ShipClass.LONGBOW || c == ShipClass.PHANTOM ? HEAVY_PRICE_K : PRICE_K;
+    }
 
     /** Build orders of c the faction already has: alive (counted per squad) plus queued. */
     public int copies(Faction f, ShipClass c) {
@@ -211,7 +217,7 @@ public class ProductionSystem {
     public float priceMult(Faction f, ShipClass c) {
         if (c == ShipClass.STELLAR_REFINEMENT) return 1f + REFINEMENT_K * (float) Math.log(1 + f.refinement + w.queued(f, c));
         if (!c.isWarship()) return 1f;
-        return 1f + PRICE_K * (float) Math.log(1 + copies(f, c));
+        return 1f + priceK(c) * (float) Math.log(1 + copies(f, c));
     }
 
     public int energyCost(Faction f, ShipClass c) {

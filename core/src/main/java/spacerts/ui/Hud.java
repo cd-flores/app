@@ -526,7 +526,7 @@ public class Hud {
         txt(bx + 7, y, label, Color.WHITE, 0.85f);
         buttons.add(new Btn(bx, by, bw, bh, gs.input::toggleRetreat));
         if (hov) tooltip = "Auto-retreat: below " + (int) (Unit.RETREAT_AT * 100) + "% hull a warship pulls back to the nearest Mender or base\n"
-                + "(colony, Ship Station, Mothership), repairs to " + (int) (Unit.RETREAT_DONE * 100) + "%, then attack-moves back into the fight.\n"
+                + "(Ship Station, Mothership), repairs to " + (int) (Unit.RETREAT_DONE * 100) + "%, then attack-moves back into the fight.\n"
                 + "Any ship parked near your bases and out of combat for " + (int) UnitBehavior.REPAIR_DELAY + " s repairs "
                 + (int) (UnitBehavior.REPAIR_RATE * 100) + "% of its hull per second.";
         return bx + bw + 8;
@@ -732,11 +732,14 @@ public class Hud {
         StringBuilder sb = new StringBuilder();
         switch (b.kind) {
             case STAR:
-                sb.append("Star - infinite ENERGY source.\nRight-click with harvesters selected to collect energy.");
+                if (b.burntOut()) sb.append("Burnt-out star: its energy is used up.");
+                else if (b.finiteStar()) sb.append("Star - ENERGY: ").append(String.format("%,d", (long) b.metal))
+                        .append(" remaining. It shrinks as it drains.\nRight-click with harvesters selected to collect energy.");
+                else sb.append("Star - ENERGY source.\nRight-click with harvesters selected to collect energy.");
                 break;
             case ASTEROID:
                 sb.append(b.giant ? "GIANT ASTEROID - METAL: " : "Asteroid - METAL: ").append(String.format("%,d", (long) b.metal)).append(" remaining.\nRight-click with harvesters to mine")
-                        .append(b.giant ? ", or park an Asteroid Miner beside it: it will take days to drain." : ".");
+                        .append(b.giant ? ", or park an Asteroid Miner beside it: it takes a long time to drain." : ".");
                 break;
             case GATE: {
                 StarSystem to = b.link != null ? b.link.system : null;
@@ -751,6 +754,7 @@ public class Hud {
             default:
                 sb.append(b.type.title).append("\n");
                 if (b.type.habitable) sb.append("Habitable: +").append((int) b.housing(w.player)).append(" housing when colonized.\n");
+                if (b.guarded()) sb.append(b.provokedBy(w.player, w.time) ? "Its defenders are fighting you!\n" : "Its defenders hold fire until you attack them.\n");
                 if (b.type.minable) sb.append("Minable for metal (slow, infinite).\n");
                 if (b.type.rare != null) sb.append("Rare item: ").append(b.type.rare.title).append(" (send a Surveyor)\n");
                 if (b.guarded()) sb.append("DEFENDED by ").append(b.turretsAlive()).append(" native turrets + guards. Destroy the turrets first.\n");
@@ -853,7 +857,7 @@ public class Hud {
                     int n = w.production.copies(p, c);
                     tooltip += "\n\nPrice now " + ProductionSystem.costText(ce, cm, c.s.rare) + "  (base " + c.s.energy + "E / " + c.s.metal + "M, +"
                             + Math.round((w.production.priceMult(p, c) - 1f) * 100) + "% for " + n + " already in service).\n"
-                            + "Warships cost base x (1 + " + ProductionSystem.PRICE_K + " x ln(1 + copies)): variety is cheaper.";
+                            + "Warships cost base x (1 + " + ProductionSystem.priceK(c) + " x ln(1 + copies)): variety is cheaper.";
                 }
             }
         }
@@ -1289,7 +1293,7 @@ public class Hud {
                 "  Harvesters (built by the Mothership) collect ENERGY from stars and METAL from asteroids, barren planets and WRECKS.\n"
                         + "  Mining Barges (Ship Station) are tough, slow haulers with a 150 hold. Destroyed ships leave wrecks worth HALF their metal.\n"
                         + "  Scarce finds turn up now and then: Dark Matter (mining asteroids), Star Essence (starlight), Neutronium (salvage), Exotic Matter (ruins).\n\n"
-                        + "  HOUSING limits your fleet: colonize Habitable Worlds or conquer Fortified Worlds. Every new colony brings a free Harvester.\n"
+                        + "  HOUSING limits your fleet: colonize Habitable Worlds or conquer Fortified Worlds (they hold fire until you attack them). Every new colony brings a free Harvester.\n"
                         + "  Ships fly 2x faster toward your colonies, and 1.75x toward any planet or while charging into an attack.\n\n"
                         + "  UPKEEP: a big army drains energy every second (top bar). Ships count their housing, each station counts 4.\n"
                         + "  Up to 40: free.  41-100: low.  Over 100: high.\n"
@@ -1302,7 +1306,7 @@ public class Hud {
                         + "  STATIONS (Ship Stations, the Research Hub, Repair Stations) can move, at half the Mothership's speed.\n"
                         + "  V (or the button on the Mothership's panel) RALLIES them: they line up in hex rings around the Mothership and move as fast as it does.\n\n"
                         + "  TIERS (select it, then U or its upgrade button): Mothership I-III adds hull, guns and buildings. Ship Station I-III builds\n"
-                        + "  30% faster per tier; tier II unlocks Corsair, Tempest, Aegis and Phantom; tier III unlocks Sovereign, Halcyon and Leviathan.\n"
+                        + "  30% faster per tier; tier II unlocks Corsair, Tempest, Aegis and Phantom; tier III unlocks Sovereign and Leviathan.\n"
                         + "  WARSHIP PRICES grow with how many of that type you have: 10 in service = +84%, 50 = +138%. Mix your fleet."});
         pages.add(new String[]{"Warships and skills",
                 "  Lancer beats Longbow, Longbow beats Bulwark, Bulwark beats Lancer.\n"

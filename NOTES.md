@@ -4,7 +4,7 @@ Context for picking this project up on another computer. The README describes th
 
 ## Status
 - Branch: `feature/hive-galaxy` (not merged into `main` yet).
-- Build and tests: `./gradlew :core:test --offline` (119 tests, all passing). Run the game with `./gradlew lwjgl3:run` (or `run.bat`).
+- Build and tests: `./gradlew :core:test --offline` (129 tests, all passing). Run the game with `./gradlew lwjgl3:run` (or `run.bat`).
 - Java 17+, libGDX (LWJGL3 desktop). There is no Python on the original machine, so edits were made by hand or with sed/awk.
 
 ## Ground rules of the codebase
@@ -31,6 +31,14 @@ Context for picking this project up on another computer. The README describes th
    - Per-ship targeting modes (K): nearest / farthest / most / least health / random.
    - **Y** toggles tactics; the tactic is picked at the Command Center.
 10. **Bots use Bulldozer** (`ai/RivalAI`: `commandCenter`, `tacticalLaunch`): Hard / Insane bots build a Command Center once their Hub stands (from 12 min, Insane 9 min, with 900/900 spare), unlock Bulldozer, then Shield Wall and Ramming Plates when rich (2500/2500). When an assault is grouped and the target is at least 1500 away, the ships near the leader (needs a tank and 6 ships) march in as a Bulldozer; the rest attack-move as before. Bot orders go through `RivalAI.order`, which drops the ship out of its formation first, and `attackMove` skips formation members.
+11. **Balance pass** (`BalanceTest` covers it):
+    - Ships: Halcyon retired (kept in `ShipClass` for old saves, no longer in any build list). Longbow range 850, Phantom 950. Bulwark, Longbow and Phantom fly at Lancer speed (165). Housing: Bulwark 6, Longbow 3, Phantom 4.
+    - Prices: `Spec.cost()` and the `Tech` constructor add `Spec.ENERGY_SURCHARGE` (50) to anything with a cost, so spec numbers in `ShipClass` are the old base prices. Repair Station base cost 750/750. `ProductionSystem.priceK()`: Bulwark / Longbow / Phantom use 0.7, other warships 0.35.
+    - Limits: at most `ConstructionSystem.MAX_STATIONS` (2) Ship Stations; still one Research Hub.
+    - Repair: colonies no longer repair docked ships (`World.nearestRepairPoint(..., colonies=false)` in base repair and auto-retreat).
+    - Fortified worlds: natives only target factions in `Body.provoked` (last hit time per faction id, set in `CombatSystem.applyDamage`, saved) within `Body.PROVOKE_MEMORY` (30 s).
+    - Resources: stars hold 300k-600k energy in `Body.metal` / `maxMetal` (`finiteStar`, `drainStar`, `burntOut`); stars from older saves have `maxMetal` 0 and stay endless. Giant asteroids hold 150k-300k; the classic map has 4, one near each edge midpoint. `GalaxyGenerator.CLUMP_MULT` doubles every asteroid clump. Metal planets are still endless.
+    - Bots: `RivalAI.START_DELAY` 480 s; `colonyLimit()` 3 + 2 every 15 min (max 14); decisions every `Difficulty.thinkInterval()` (20 / 10 / 5 / 1.5 s).
 
 ## Performance (stress test)
 - `./gradlew :core:stressTest --offline` (`StressTest`, tagged `stress`, left out of `test`) times `World.update` with more and more near-unkillable ships and writes `core/build/reports/stress/stress-*.csv`. It asserts only correctness (no NaN), never speed.

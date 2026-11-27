@@ -67,14 +67,20 @@ public final class GalaxyGenerator {
             asteroidField(w, r, x, y, 4 + r.nextInt(5));
             fields++;
         }
-        // two giant asteroids out in the open (own random stream, so the rest of the map is unchanged)
+        // four giant asteroids, one near the middle of each edge (own random stream, so the rest of the map is unchanged)
         Random gr = new Random(w.seed ^ 0x61A57L);
-        int giants = 0;
-        for (int i = 0; i < 400 && giants < 2; i++) {
-            float x = 1500 + gr.nextFloat() * (S - 3000), y = 1500 + gr.nextFloat() * (S - 3000);
-            if (tooClose(w, x, y, 700) || nearestStart(starts, majors, x, y) < 3000) continue;
+        float in = S * GIANT_EDGE;
+        float[][] sides = {{S / 2, in}, {S / 2, S - in}, {in, S / 2}, {S - in, S / 2}};
+        for (float[] side : sides) {
+            float x = side[0], y = side[1];
+            for (int i = 0; i < 60; i++) { // a free spot near the edge midpoint, with a little jitter
+                float jx = side[0] + (gr.nextFloat() - 0.5f) * 1200, jy = side[1] + (gr.nextFloat() - 0.5f) * 1200;
+                if (tooClose(w, jx, jy, 400)) continue;
+                x = jx;
+                y = jy;
+                break;
+            }
             giantAsteroid(w, gr, x, y);
-            giants++;
         }
         for (Body b : w.bodies) if (b.kind == Body.Kind.ASTEROID) w.initialAsteroids++;
 
@@ -170,6 +176,8 @@ public final class GalaxyGenerator {
     public static Body addStar(World w, Random r, float x, float y) {
         Body b = new Body(Body.Kind.STAR, x, y, 85 + r.nextFloat() * 55);
         b.name = name(r);
+        b.maxMetal = STAR_MIN + r.nextDouble() * (STAR_MAX - STAR_MIN); // a massive but finite energy deposit
+        b.metal = b.maxMetal;
         float t = r.nextFloat();
         if (t < 0.4f) b.color.set(1f, 0.85f, 0.45f, 1f);
         else if (t < 0.65f) b.color.set(1f, 0.6f, 0.3f, 1f);
@@ -221,9 +229,15 @@ public final class GalaxyGenerator {
         return b;
     }
 
+    /** Stars: energy deposit (300-600 thousand); they shrink as it drains and burn out when empty. */
+    public static final double STAR_MIN = 300_000, STAR_MAX = 600_000;
+
+    /** Asteroid clumps hold twice as many rocks as they used to, spread a little wider. */
+    public static final int CLUMP_MULT = 2;
+
     public static void asteroidField(World w, Random r, float x, float y, int n) {
-        for (int i = 0; i < n; i++) {
-            float ax = x + (float) r.nextGaussian() * 170, ay = y + (float) r.nextGaussian() * 170;
+        for (int i = 0; i < n * CLUMP_MULT; i++) {
+            float ax = x + (float) r.nextGaussian() * 220, ay = y + (float) r.nextGaussian() * 220;
             Body b = new Body(Body.Kind.ASTEROID, w.clampX(ax, ay), w.clampY(ax, ay), 12 + r.nextFloat() * 14);
             b.maxMetal = (500 + r.nextFloat() * 700) * ASTEROID_METAL_MULT;
             b.metal = b.maxMetal;
@@ -235,10 +249,12 @@ public final class GalaxyGenerator {
 
     /** Every asteroid holds 3x the metal it used to (1500-3600). */
     public static final float ASTEROID_METAL_MULT = 3f;
-    /** Giant asteroids: huge, slow to drain, holding 1-5 million metal. */
-    public static final double GIANT_MIN = 1_000_000, GIANT_MAX = 5_000_000;
+    /** Giant asteroids: huge and slow to drain, but finite: 150-300 thousand metal. */
+    public static final double GIANT_MIN = 150_000, GIANT_MAX = 300_000;
+    /** Classic galaxy: giants sit this share of the map size in from the middle of each edge. */
+    public static final float GIANT_EDGE = 0.12f;
 
-    /** A giant asteroid holding millions of metal (a long-term prize to hold and mine for days). */
+    /** A giant asteroid holding a huge (finite) metal store: a long-term prize to hold and mine. */
     public static Body giantAsteroid(World w, Random r, float x, float y) {
         Body b = new Body(Body.Kind.ASTEROID, w.clampX(x, y), w.clampY(x, y), 70 + r.nextFloat() * 40);
         b.giant = true;

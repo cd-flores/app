@@ -26,7 +26,10 @@ public class EconomySystem {
             if (u.dead) continue;
             if (u.cls == ShipClass.OUTPOST) extract(u, dt);
             else if (u.cls == ShipClass.SOLAR) {
-                u.owner.energy += solarRate(u) * dt;
+                Body star = u.home;
+                float got = star != null ? star.drainStar(solarRate(u) * dt) : solarRate(u) * dt;
+                if (got <= 0) continue; // its star has burnt out
+                u.owner.energy += got;
                 if (w.loot.nextFloat() < SOLAR_STAR_CHANCE / 60f * dt) w.grantRare(u.owner, RareItem.STAR_ESSENCE, 1, u.x, u.y);
             } else if (u.cls == ShipClass.MINER) mine(u, dt);
             else if (u.cls == ShipClass.COLONY && u.home != null && u.owner.isMajor()) {
@@ -88,7 +91,7 @@ public class EconomySystem {
 
     /** Chance per minute of an asteroid shower: 1 in 60 per hex, 1 in 20 in Asteroid Belts (and the classic map). */
     public static final float SHOWER_CHANCE = 1f / 60f, SHOWER_CHANCE_BELT = 1f / 20f;
-    /** Chance a shower brings a giant asteroid (millions of metal) along. */
+    /** Chance a shower brings a giant asteroid (a huge metal store) along. */
     public static final float SHOWER_GIANT = 0.06f, SHOWER_GIANT_BELT = 0.12f;
     /** No new showers in a system that already has this many asteroids. */
     public static final int SHOWER_CAP = 180, SHOWER_CAP_BELT = 360;
@@ -119,7 +122,7 @@ public class EconomySystem {
             boolean known = w.player.vision.isExplored(p[0], p[1]) || s.owned();
             if (known) {
                 String where = w.galaxy.hive ? " in " + s.name : "";
-                w.announce(giant ? "Asteroid shower" + where + " - with a GIANT asteroid holding millions of metal!"
+                w.announce(giant ? "Asteroid shower" + where + " - with a GIANT asteroid holding a huge metal store!"
                         : "Asteroid shower" + where + ": a fresh field has drifted in.", giant ? World.GOOD : World.INFO);
                 if (giant) w.alert(p[0], p[1]);
             }
@@ -295,10 +298,10 @@ public class EconomySystem {
                         b.dead = true;
                         if (b.isWreck()) wreckEmptied(b, u.owner, u.x, u.y);
                     }
-                }
+                } else if (energy) amt = b.drainStar(amt);
                 u.cargo += drones ? amt * 1.25f : amt;
                 u.cargoAsteroid = b.kind == Body.Kind.ASTEROID;
-                if (u.cargo >= cap - 0.01f || b.dead) u.harvestState = 2;
+                if (u.cargo >= cap - 0.01f || b.dead || b.burntOut()) u.harvestState = 2;
                 break;
             }
             default: { // returning

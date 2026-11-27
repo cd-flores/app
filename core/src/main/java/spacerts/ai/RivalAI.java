@@ -2,6 +2,7 @@ package spacerts.ai;
 
 import spacerts.net.CommandExecutor;
 import spacerts.research.Tech;
+import spacerts.systems.ConstructionSystem;
 import spacerts.systems.TacticsSystem;
 import spacerts.units.Order;
 import spacerts.units.ShipClass;
@@ -49,14 +50,22 @@ public class RivalAI {
         this.think = 1f + f.id * 0.37f;
     }
 
-    /** Bots sit completely still for the first three minutes of a game. */
-    public static final float START_DELAY = 180f;
+    /** Bots sit completely still for the first eight minutes of a game. */
+    public static final float START_DELAY = 480f;
+
+    /** Colonies a bot may hold: COLONY_START at first, COLONY_STEP more every COLONY_PERIOD seconds, at most COLONY_MAX. */
+    public static final int COLONY_START = 3, COLONY_STEP = 2, COLONY_MAX = 14;
+    public static final float COLONY_PERIOD = 15 * 60f;
+
+    public int colonyLimit() {
+        return Math.min(COLONY_MAX, COLONY_START + COLONY_STEP * (int) (w.time / COLONY_PERIOD));
+    }
 
     public void update(float dt) {
         if (w.time < START_DELAY) return;
         think -= dt;
         if (think > 0) return;
-        think = 1.5f;
+        think = f.difficulty.thinkInterval(); // easier bots make decisions less often
         Unit ms = f.mothership;
         if (ms == null || ms.dead) return;
         scan();
@@ -113,7 +122,7 @@ public class RivalAI {
         Set<Body> claimed = new HashSet<>();
         for (Unit c : colonyShips) if (c.body != null) claimed.add(c.body);
         boolean housingTight = f.popCap - f.popUsed < 15;
-        if ((housingTight || w.time > 120) && colonyShips.size() + pending(ShipClass.COLONY_SHIP) == 0 && colonies.size() < 14) {
+        if ((housingTight || w.time > 120) && colonyShips.size() + pending(ShipClass.COLONY_SHIP) == 0 && colonies.size() < colonyLimit()) {
             Unit fac = leastBusy();
             if (fac != null && nearestColonizable(ms, claimed) != null) w.production.enqueue(fac, ShipClass.COLONY_SHIP);
         }
@@ -155,7 +164,7 @@ public class RivalAI {
         for (Unit p : producers) if (p.cls == ShipClass.FACTORY) factories++;
         factories += w.construction.building(f, ShipClass.FACTORY, null);
         // first factory right away, more as the empire grows
-        int wantFactories = Math.min(3, 1 + colonies.size() / 3 + (w.time > 900 ? 1 : 0));
+        int wantFactories = Math.min(ConstructionSystem.MAX_STATIONS, 1 + colonies.size() / 3 + (w.time > 900 ? 1 : 0));
         if (factories == 0 || (factories < wantFactories && w.time > 420 && f.canAfford(600, 600, NO_RARE))) {
             Unit anchor = factories == 0 || colonies.isEmpty() ? ms : colonies.get(w.rng.nextInt(colonies.size()));
             build(ShipClass.FACTORY, anchor, null);
@@ -382,7 +391,7 @@ public class RivalAI {
         if (f.energy < 250 && f.metal < 250) return;
         if (atShipCap()) return;
         // keep housing free for a colony ship while there are worlds left to settle, or expansion stalls
-        if (f.popCap - f.popUsed <= 4 && colonyShips.isEmpty() && colonies.size() < 14
+        if (f.popCap - f.popUsed <= 4 && colonyShips.isEmpty() && colonies.size() < colonyLimit()
                 && nearestColonizable(ms, new HashSet<>()) != null) return;
         // Hard and Insane bots guard a tier II Mothership with up to 2 Defenders once they are rich
         if (f.difficulty.ordinal() >= spacerts.world.Difficulty.HARD.ordinal() && ms.tier >= 2 && f.energy > 4000 && f.metal > 4500
@@ -400,7 +409,7 @@ public class RivalAI {
             ShipClass up = p.tier == 1 ? ShipClass.FACTORY_TIER_2 : p.tier == 2 ? ShipClass.FACTORY_TIER_3 : null;
             if (up != null && w.production.enqueue(p, up) == null) return;
         }
-        if (p.tier >= 3 && w.production.enqueue(p, w.rng.nextBoolean() ? ShipClass.SOVEREIGN : ShipClass.HALCYON) == null) return;
+        if (p.tier >= 3 && w.rng.nextBoolean() && w.production.enqueue(p, ShipClass.SOVEREIGN) == null) return;
         ShipClass[] pool = {ShipClass.LANCER, ShipClass.LANCER, ShipClass.LANCER, ShipClass.BULWARK, ShipClass.BULWARK,
                 ShipClass.LONGBOW, ShipClass.LONGBOW, ShipClass.HIVE, ShipClass.AEGIS, ShipClass.PHANTOM, ShipClass.CORSAIR, ShipClass.TEMPEST};
         for (int tries = 0; tries < 4; tries++) {

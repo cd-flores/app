@@ -33,7 +33,15 @@ public class Spec {
     }
 
     /** Cost is per build order (whole squad); pop is per individual ship. */
-    public Spec cost(int e, int m, int pop) { energy = e; metal = m; this.pop = pop; return this; }
+    /** Flat energy surcharge added to the price of everything that costs something (balance pass). */
+    public static final int ENERGY_SURCHARGE = 50;
+
+    public Spec cost(int e, int m, int pop) {
+        energy = e + (e > 0 || m > 0 ? ENERGY_SURCHARGE : 0);
+        metal = m;
+        this.pop = pop;
+        return this;
+    }
     public Spec rare(int pyro, int cryo, int plasma, int voidShard, int relic) { rare = RareItem.cost(pyro, cryo, plasma, voidShard, relic); return this; }
     /** Scarce-find costs (Dark Matter, Star Essence, Neutronium, Exotic Matter), added to any rare() cost. */
     public Spec rare2(int dark, int star, int neutron, int exotic) {

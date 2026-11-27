@@ -33,13 +33,13 @@ public enum ShipClass {
     PATROL_SKIFF(new Spec("Patrol Skiff", "What's left of a Patrol Ship: a fast little fighter that keeps the patrol going.")
             .hp(60).speed(230).weapon(150, 3, 0.3f).vision(450).radius(7)),
     BULWARK(new Spec("Bulwark", "TANK. Huge HP and shields, flak splash vs infantry. T: Taunt pulls enemy fire.")
-            .cost(120, 200, 5).hp(900).shield(350, 12).armor(0.4f).speed(95).weapon(210, 10, 0.6f)
+            .cost(120, 200, 6).hp(900).shield(350, 12).armor(0.4f).speed(165).weapon(210, 10, 0.6f)
             .splash(70).bonus(LIGHT, 2f).vision(460).radius(20).build(14).type(HEAVY).ability(Ability.TAUNT)),
     LONGBOW(new Spec("Longbow", "SNIPER. Very long range armor-piercing shots, must stop to fire. Fragile; blind up close. Z: Evasive Dash - leaps 400 backward.")
-            .cost(150, 120, 4).hp(160).armor(0.05f).speed(80).weapon(900, 130, 5.5f).minRange(220)
+            .cost(150, 120, 3).hp(160).armor(0.05f).speed(165).weapon(850, 130, 5.5f).minRange(220)
             .piercing().mustStop().bonus(HEAVY, 1.8f).vision(450).radius(14).build(14).type(ARTILLERY).ability(Ability.DASH)),
     MENDER(new Spec("Repair Station", "REPAIR STATION. Placed by a Harvester. Repairs every allied ship and structure within 400 (repairs cost metal). Damaged ships retreat to it. Unarmed; crawls slowly, or joins the Mothership's rally (V).")
-            .cost(150, 150, 0).hp(900).shield(250, 8).armor(0.25f).heal(400, 15)
+            .cost(750, 750, 0).hp(900).shield(250, 8).armor(0.25f).heal(400, 15)
             .vision(550).radius(26).build(20).speed(14).type(STRUCTURE)),
     HIVE(new Spec("Hive", "CARRIER. Launches and replaces up to 6 attack drones.")
             .cost(300, 350, 7).hp(1400).shield(400, 10).armor(0.3f).speed(62).drones(6)
@@ -49,7 +49,7 @@ public enum ShipClass {
     BROODLING(new Spec("Broodling", "Released by a destroyed Hive (Brood Swarm research). A fast fighter that keeps the fight going.")
             .hp(180).armor(0.1f).speed(190).weapon(170, 6, 0.35f).bonus(ARTILLERY, 1.5f).vision(420).radius(9)),
     PHANTOM(new Spec("Phantom", "RARE SNIPER. Cloaked until it fires. Long range, armor-piercing. Z: Evasive Dash - leaps 400 backward.")
-            .cost(250, 200, 5).rare(0, 0, 2, 1, 0).hp(200).armor(0.1f).speed(95).weapon(1000, 170, 6f).minRange(220)
+            .cost(250, 200, 4).rare(0, 0, 2, 1, 0).hp(200).armor(0.1f).speed(165).weapon(950, 170, 6f).minRange(220)
             .piercing().mustStop().bonus(HEAVY, 1.8f).cloak().vision(520).radius(14).build(18)
             .type(ARTILLERY).ability(Ability.DASH).tech(Tech.PHANTOM_TECH).factoryTier(2)),
     AEGIS(new Spec("Aegis", "RARE TANK. Projects a shield bubble: allies nearby take 30% less damage. T: Taunt.")
@@ -71,7 +71,7 @@ public enum ShipClass {
             .cost(1200, 1500, 11).rare2(2, 0, 2, 0).hp(6000).shield(2000, 30).armor(0.5f).speed(48)
             .weapon(600, 40, 0.5f).multi(2).vision(800).radius(48).build(70).type(HEAVY)
             .ability(Ability.OVERCHARGE).factoryTier(3)),
-    HALCYON(new Spec("Halcyon", "REPAIR CRUISER. Keeps pace with the fleet and repairs every ally within 300, three times as fast as a Repair Station. Lightly armed. Station tier III.")
+    HALCYON(new Spec("Halcyon", "REPAIR CRUISER (retired: no longer built). Keeps pace with the fleet and repairs every ally within 300, three times as fast as a Repair Station. Lightly armed. Station tier III.")
             .cost(600, 500, 7).rare2(0, 2, 0, 0).hp(1800).shield(800, 15).armor(0.3f).speed(85)
             .weapon(300, 8, 0.6f).heal(300, 45).vision(600).radius(24).build(40).type(HEAVY).factoryTier(3)),
     DEFENDER(new Spec("Defender", "GUARDIAN. A huge armored escort that orbits the Mothership and shoots anything that comes near. Never leaves its post. T: Taunt. Up to 4. Mothership tier II.")
@@ -87,7 +87,7 @@ public enum ShipClass {
             .cost(2000, 2000, 0).build(60).msTier(3).internal()),
     FACTORY_TIER_2(new Spec("Station Tier II", "Upgrade this Ship Station: builds 30% faster; unlocks Corsair, Tempest, Aegis and Phantom.")
             .cost(800, 800, 0).rare(1, 1, 0, 0, 0).build(60).upgrade(2)),
-    FACTORY_TIER_3(new Spec("Station Tier III", "Upgrade this Ship Station: builds 60% faster than tier I; unlocks Sovereign, Halcyon and Leviathan.")
+    FACTORY_TIER_3(new Spec("Station Tier III", "Upgrade this Ship Station: builds 60% faster than tier I; unlocks Sovereign and Leviathan.")
             .cost(2000, 2000, 0).rare2(2, 0, 1, 0).build(120).upgrade(3)),
 
     TURRET(new Spec("Defense Turret", "Planetary defense battery.")
@@ -113,7 +113,7 @@ public enum ShipClass {
     SHIPYARD(new Spec("Orbital Shipyard", "Second production site in orbit of a colony.")
             .cost(300, 300, 0).hp(1600).shield(300, 8).armor(0.3f).vision(550).radius(22).build(30)
             .type(STRUCTURE).stationary().producer()),
-    FACTORY(new Spec("Ship Station", "Builds every ship except Harvesters. Built by Harvesters; build as many as you like. Crawls slowly, or joins the Mothership's rally (V).")
+    FACTORY(new Spec("Ship Station", "Builds every ship except Harvesters. Built by Harvesters; at most 2 per empire. Crawls slowly, or joins the Mothership's rally (V).")
             .cost(300, 300, 0).hp(1800).shield(400, 10).armor(0.3f).vision(600).radius(30).build(30)
             .speed(14).type(STRUCTURE).producer()), // mobile station: half the Mothership's speed unless rallied
     COMMAND(new Spec("Command Center", "COMMAND STATION. Unlocks battle tactics and their upgrades, and picks the active tactic. One per empire. Crawls slowly, or joins the Mothership's rally (V).")
@@ -172,7 +172,7 @@ public enum ShipClass {
 
     private static final ShipClass[] MS_BUILD = {HARVESTER, PATROL, DEFENDER, MS_TIER_2, MS_TIER_3, STELLAR_REFINEMENT};
     private static final ShipClass[] FACTORY_BUILD = {COLONY_SHIP, WISP, LANCER, BULWARK, LONGBOW, HIVE, BARGE, CORSAIR, TEMPEST,
-            PHANTOM, AEGIS, SOVEREIGN, HALCYON, LEVIATHAN, FACTORY_TIER_2, FACTORY_TIER_3};
+            PHANTOM, AEGIS, SOVEREIGN, LEVIATHAN, FACTORY_TIER_2, FACTORY_TIER_3};
     /** Legacy: shipyards from older saves keep working. */
     private static final ShipClass[] YARD_BUILD = {COLONY_SHIP, WISP, LANCER, BULWARK, LONGBOW, HIVE, PHANTOM, AEGIS, BARGE};
     private static final ShipClass[] HUB_BUILD = {SURVEYOR};

@@ -181,8 +181,9 @@ class SimulationTest {
         Unit ms = p.mothership;
         assertNotNull(w.production.enqueue(ms, ShipClass.LANCER), "mothership no longer builds warships");
         assertNull(w.production.enqueue(ms, ShipClass.HARVESTER));
-        assertEquals(700 - 50, p.energy, 0.01, "started with the bigger stockpile");
+        assertEquals(700 - ShipClass.HARVESTER.s.energy, p.energy, 0.01, "started with the bigger stockpile");
         Unit fac = buildFactory(w, p);
+        p.energy = p.metal = 5000; // this test is about who builds what, not prices
         assertNull(w.production.enqueue(fac, ShipClass.LANCER), "factory builds warships");
         assertNull(w.production.enqueue(fac, ShipClass.COLONY_SHIP), "factory builds colony ships");
         assertNotNull(w.production.enqueue(fac, ShipClass.HARVESTER), "harvesters only from the mothership");
@@ -197,17 +198,17 @@ class SimulationTest {
         Unit h = harvesters(w, p).get(0);
         float[] s = site(w, p, p.mothership, ShipClass.FACTORY.s.radius);
         assertNull(w.construction.order(h, ShipClass.FACTORY, null, s[0], s[1]));
-        assertEquals(700, p.energy, 0.01, "paid up front");
+        assertEquals(1000 - ShipClass.FACTORY.s.energy, p.energy, 0.01, "paid up front");
         run(w, 2);
         h.idle(); // X: stop
-        assertEquals(700 + 300, p.energy, 5, "refunded on stop");
+        assertEquals(1000, p.energy, 5, "refunded on stop");
         assertNull(h.buildCls);
         // a harvester killed mid-build refunds too
         assertNull(w.construction.order(h, ShipClass.FACTORY, null, s[0], s[1]));
         double before = p.energy;
         h.kill(false);
         run(w, 0.1f);
-        assertEquals(before + 300, p.energy, 5, "refunded on death");
+        assertEquals(before + ShipClass.FACTORY.s.energy, p.energy, 5, "refunded on death");
     }
 
     @Test
@@ -1350,10 +1351,10 @@ class SimulationTest {
             if (b.kind != Body.Kind.ASTEROID) continue;
             if (b.giant) {
                 giants++;
-                assertTrue(b.maxMetal >= GalaxyGenerator.GIANT_MIN && b.maxMetal <= GalaxyGenerator.GIANT_MAX, "millions of metal");
+                assertTrue(b.maxMetal >= GalaxyGenerator.GIANT_MIN && b.maxMetal <= GalaxyGenerator.GIANT_MAX, "a huge but finite store");
             } else assertTrue(b.maxMetal >= 1500 && b.maxMetal <= 3600, "3x metal: " + b.maxMetal);
         }
-        assertEquals(2, giants, "two giants on a classic map");
+        assertEquals(4, giants, "four giants on a classic map, one per side");
     }
 
     @Test
@@ -1433,7 +1434,9 @@ class SimulationTest {
     @Test
     void shipsCostOneMoreHousingExceptInfantry() {
         assertEquals(2, ShipClass.HARVESTER.s.pop);
-        assertEquals(5, ShipClass.BULWARK.s.pop);
+        assertEquals(6, ShipClass.BULWARK.s.pop, "tanks take one more housing");
+        assertEquals(3, ShipClass.LONGBOW.s.pop, "snipers one less");
+        assertEquals(4, ShipClass.PHANTOM.s.pop);
         assertEquals(21, ShipClass.LEVIATHAN.s.pop);
         assertEquals(1, ShipClass.LANCER.s.pop, "infantry unchanged");
         assertEquals(1, ShipClass.PATROL.s.pop, "Patrol Ship is 1 housing");

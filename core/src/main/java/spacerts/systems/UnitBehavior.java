@@ -37,8 +37,8 @@ public class UnitBehavior {
             w.repair(u, (u.cls == ShipClass.MOTHERSHIP ? 12f : 4f) * Unit.DURABILITY * dt); // paid in metal
         boolean refit = u.owner.has(Tech.RAPID_REFIT); // Rapid Refit Docks: 4%/s, starting 3 s after combat
         if (!u.s.stationary && u.hp < u.maxHp() && w.time - u.lastHit > (refit ? REPAIR_DELAY / 2 : REPAIR_DELAY)
-                && w.nearestRepairPoint(u.owner, u.x, u.y, REPAIR_RANGE) != null)
-            w.repair(u, u.maxHp() * REPAIR_RATE * (refit ? 2 : 1) * dt); // docked at a colony, station or mothership (paid in metal)
+                && w.nearestRepairPoint(u.owner, u.x, u.y, REPAIR_RANGE, false) != null)
+            w.repair(u, u.maxHp() * REPAIR_RATE * (refit ? 2 : 1) * dt); // docked at a station or the mothership (paid in metal); colonies no longer repair ships
         if (u.cooldown > 0) u.cooldown -= dt;
         for (int i = 0; i < u.abilityCds.length; i++) if (u.abilityCds[i] > 0) u.abilityCds[i] -= dt;
         if (u.ghostTimer > 0) u.ghostTimer -= dt;
@@ -217,6 +217,7 @@ public class UnitBehavior {
             float d = u.dist(c) - c.radius;
             if (d > r) continue;
             if (centre != null && Math.hypot(c.x - centre.x, c.y - centre.y) > cr) continue;
+            if (centre != null && !centre.provokedBy(c.owner, w.time)) continue; // fortified worlds let fleets pass until attacked
             if (!w.canSee(u.owner, c)) continue;
             float score = d;
             if (u.targeting != spacerts.units.Targeting.NEAREST && centre == null) { // targeting modes (like tower targeting)

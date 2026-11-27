@@ -391,17 +391,25 @@ public class WorldRenderer {
         Color c = b.color;
         switch (b.kind) {
             case STAR: {
-                float pulse = 1f + 0.03f * (float) Math.sin(w.time * 2 + b.x);
+                if (b.burntOut()) { // a cold cinder
+                    float rr = b.radius * 0.4f;
+                    sr.setColor(c.r * 0.35f, c.g * 0.25f, c.b * 0.25f, 1f);
+                    sr.circle(b.x, b.y, rr, segs(rr));
+                    break;
+                }
+                float scale = 0.4f + 0.6f * b.starLeft(); // shrinks as its deposit drains
+                float pulse = scale * (1f + 0.03f * (float) Math.sin(w.time * 2 + b.x));
                 sr.setColor(c.r, c.g, c.b, 0.05f);
                 sr.circle(b.x, b.y, b.radius * 2.6f * pulse, segs(b.radius * 2.6f));
                 sr.setColor(c.r, c.g, c.b, 0.1f);
                 sr.circle(b.x, b.y, b.radius * 1.7f * pulse, segs(b.radius * 1.7f));
+                float sr0 = b.radius * scale;
                 sr.setColor(c.r, c.g, c.b, 0.3f);
-                sr.circle(b.x, b.y, b.radius * 1.2f, segs(b.radius * 1.2f));
+                sr.circle(b.x, b.y, sr0 * 1.2f, segs(sr0 * 1.2f));
                 sr.setColor(c);
-                sr.circle(b.x, b.y, b.radius, segs(b.radius));
+                sr.circle(b.x, b.y, sr0, segs(sr0));
                 sr.setColor(1f, 1f, 0.95f, 0.7f);
-                sr.circle(b.x, b.y, b.radius * 0.6f, segs(b.radius));
+                sr.circle(b.x, b.y, sr0 * 0.6f, segs(sr0));
                 break;
             }
             case ASTEROID: {

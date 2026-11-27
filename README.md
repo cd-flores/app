@@ -14,9 +14,10 @@ Requires a JDK (17 or newer; developed on 25). The first build downloads Gradle 
 ## The game
 
 - **Mothership**: builds Harvesters. If it is destroyed, you lose.
-- **Economy**: Harvesters gather **energy** from stars and **metal** from asteroids, barren planets and wrecks. Asteroids run out, and new fields drift in over time. Every colony also trickles in energy and metal on its own, much more slowly than harvesting.
+- **Economy**: Harvesters gather **energy** from stars and **metal** from asteroids, barren planets and wrecks. **Stars hold a massive but finite energy deposit (300,000–600,000)**: they shrink as harvesters and Solar Collectors drain them and burn out when empty. Asteroids run out, and new fields drift in over time. Every colony also trickles in energy and metal on its own, much more slowly than harvesting.
 - **Richer asteroids**: every asteroid holds 3x the metal (1,500–3,600 each).
-- **Giant asteroids** hold **1–5 million metal** each. They're huge, with craters and glinting ore veins, and are named on the map. About a third of the Hive's Asteroid Belts start with one, and classic maps have two. A single Asteroid Miner takes days of play to drain one.
+- **Giant asteroids** hold **150,000–300,000 metal** each: huge, but they do run out. They have craters and glinting ore veins and are named on the map. Classic maps have **four, one near the middle of each edge**, and about a third of the Hive's Asteroid Belts start with one.
+- **Asteroid clumps** hold twice as many rocks as before.
 - **Asteroid showers**: once a minute, every system rolls for a fresh field to drift in. The chance is **1 in 60** per hex, or **1 in 20** in Asteroid Belts and on the classic map. A shower brings a giant 6% of the time (12% in belts). Showers stop in systems that are already full (60 asteroids, or 120 in belts). You're told about showers in explored or owned space.
 - **Mining Barges** (built at a Ship Station) are tough, slow haulers. They hold 150 cargo (a Harvester holds 30) and mine 1.5x faster, but they can't build.
 - **Wreck salvage**: destroyed ships leave wrecks worth **half** their metal cost (pirates leave fixed amounts). Salvage pays metal only. Harvesters and barges collect it. Wrecks drift away after 5 minutes, so battlefields are worth holding.
@@ -32,16 +33,16 @@ Requires a JDK (17 or newer; developed on 25). The first build downloads Gradle 
   They pay for tier III upgrades, the tier III ships, the Ion Cannon, the Ascension Gate and three late techs: Neutronium Plating (+20% hull), Hyperdrive Lattice (+10% speed, instant gate recharge) and Dark Matter Reactors (+30% build speed).
 - **Tier upgrades**: select the Mothership or a Ship Station and press **U** (or use its upgrade button).
   - **Mothership II / III** (1500/1500 + rare items, then 4000/4000 + scarce finds): +30% hull and shield and an extra gun per tier, and they unlock more Harvester buildings.
-  - **Ship Station II / III**, per station: each tier builds **30% faster**. Tier II unlocks Corsair, Tempest, Aegis and Phantom; tier III unlocks Sovereign, Halcyon and Leviathan.
+  - **Ship Station II / III**, per station: each tier builds **30% faster**. Tier II unlocks Corsair, Tempest, Aegis and Phantom; tier III unlocks Sovereign and Leviathan.
   - **Research Hub**: the Hub Expansion II/III techs are the lab upgrades. Each tier researches **25% faster**.
   - **Stellar Refinement** (endgame, at the Mothership; needs Mothership III and Research Hub III): a stacking upgrade, **+2% to all mining, harvesting and energy collection per level, up to 999 levels**. Each level takes 60 s and costs **2000E / 2000M × (1 + ln(1 + level))**: level 10 costs 3.4x, level 100 costs 5.6x, and level 999 costs 7.9x. Only one level can be queued at a time.
 - **Harvesters also build** (select one, then press a number key):
 
   | Key | Structure | Where |
   |---|---|---|
-  | 1 | **Ship Station**: builds every warship, Colony Ship and Mining Barge. Build as many as you like. Mobile (half the Mothership's speed). | Click open space |
+  | 1 | **Ship Station**: builds every warship, Colony Ship and Mining Barge. **At most 2.** Mobile (half the Mothership's speed). | Click open space |
   | 2 | **Research Hub** (only one). Mobile (half the Mothership's speed). | Click open space |
-  | 3 | **Repair Station**: repairs every ally within 400; damaged ships retreat to it. No housing. Mobile (half the Mothership's speed). | Click open space |
+  | 3 | **Repair Station** (800E / 750M): repairs every ally within 400; damaged ships retreat to it. No housing. Mobile (half the Mothership's speed). | Click open space |
   | 4 | **Solar Collector**: produces 6 energy/s by itself, max 2 per star | Click a star |
   | 5 | **Asteroid Miner**: mines 5 metal/s by itself, moving on to the next asteroid within 450 as each runs out, and once the whole field is dry it slowly crawls (speed 15) to the nearest asteroid clump in its system (4/s forever on a metal planet); one per field | Click an asteroid or metal-rich planet |
   | 6 | **Command Center** (one per empire): unlocks battle tactics and their upgrades, picks the active tactic. Mobile (half the Mothership's speed). | Click open space |
@@ -61,17 +62,17 @@ Requires a JDK (17 or newer; developed on 25). The first build downloads Gradle 
 - **Housing**: your fleet size is capped by housing.
   - **Mothership**: 35 housing.
   - **Habitable worlds** (undefended): send a Colony Ship for +30 housing.
-  - **Fortified worlds** (defended): native turrets and guards respawn while the turrets stand. Destroy the turrets, then colonize for +65 housing.
+  - **Fortified worlds** (defended): native turrets and guards respawn while the turrets stand. **They hold fire until attacked**, so fleets can fly past; once an empire hits them, they fight that empire until 30 s after its last hit. Destroy the turrets, then colonize for +65 housing.
   - Every new colony comes with a free Harvester that starts working straight away.
 - **Travel boosts** (the highest one applies; they don't stack):
   - 2x speed when heading to one of your own colonies.
   - 1.75x when heading to any other planet.
   - 1.75x while charging into an attack, until the ship is in weapon range.
 - **Long fights**: every ship, structure, colony and turret has 5x the HP and shields (weapons are unchanged), so battles are drawn-out fights where you wear the enemy down. Shields recover at **half speed**, but **colonies carry 5x the shield** (and recharge 5x faster to match), so conquered planets are real fortresses.
-- **Housing per ship**: every ship costs 1 more housing than before except infantry (Lancers stay at 1). For example, Harvester 2, Bulwark 5, Leviathan 21.
-- **Auto-retreat** (per ship, toggle with **R**): a warship below 25% hull pulls back to the nearest Repair Station or base (colony, Ship Station, Mothership), repairs to 90%, then attack-moves back to where it left the fight. This works for rivals too.
-- **Base repair**: any ship near your colony, Ship Station or Mothership that has been out of combat for 6 s repairs 2% of its hull per second.
-- **Repairs cost metal**: every repair (base repair, Repair Stations, Halcyons, Mothership self-repair) is paid automatically by the ship's owner. A full repair from zero hull costs **half the ship's metal price**; the Mothership is priced as if it cost 1000 metal. With no metal, repairs stop. Colonies, turrets and fixed structures still repair for free. The upkeep tooltip in the top bar shows your current repair spending.
+- **Housing per ship**: every ship costs 1 more housing than before except infantry (Lancers stay at 1). For example, Harvester 2, Bulwark 6, Longbow 3, Phantom 4, Leviathan 21.
+- **Auto-retreat** (per ship, toggle with **R**): a warship below 25% hull pulls back to the nearest Repair Station or base (Ship Station or Mothership), repairs to 90%, then attack-moves back to where it left the fight. This works for rivals too.
+- **Base repair**: any ship near your Ship Station or Mothership that has been out of combat for 6 s repairs 2% of its hull per second. **Colonies no longer repair ships.**
+- **Repairs cost metal**: every repair (base repair, Repair Stations, Mothership self-repair) is paid automatically by the ship's owner. A full repair from zero hull costs **half the ship's metal price**; the Mothership is priced as if it cost 1000 metal. With no metal, repairs stop. Colonies, turrets and fixed structures still repair for free. The upkeep tooltip in the top bar shows your current repair spending.
 - **Upkeep** (Warcraft 3 style): a big army costs energy every second. Each ship counts its housing and each station counts **4**:
 
   | Upkeep | Energy per second |
@@ -94,23 +95,23 @@ Requires a JDK (17 or newer; developed on 25). The first build downloads Gradle 
 
   Rare items pay for upgrades and for the rare ships.
 - **Warships**: Lancers beat Longbows, Longbows beat Bulwarks, and Bulwarks beat Lancers.
-- **Logarithmic warship pricing**: each warship type gets pricier the more of it you already have (alive or queued, counted per squad): **price = base × (1 + 0.35 × ln(1 + copies))**. That's +24% for your 2nd, +84% with 10 in service, and +138% with 50. A different type starts again at base price, and losses bring the price back down. Harvesters, barges, colony ships, surveyors, upgrades and structures stay at base price, and rare-item costs don't scale. Cancelling refunds what you actually paid. Salvage stays at 50% of the base metal cost.
+- **Energy prices**: everything you buy (ships, structures, upgrades, research) costs **50 more energy** than it used to.
+- **Logarithmic warship pricing**: each warship type gets pricier the more of it you already have (alive or queued, counted per squad): **price = base × (1 + 0.35 × ln(1 + copies))**. That's +24% for your 2nd, +84% with 10 in service, and +138% with 50. **Bulwarks, Longbows and Phantoms climb twice as fast (0.7)**: +49% for the 2nd, +168% with 10. A different type starts again at base price, and losses bring the price back down. Harvesters, barges, colony ships, surveyors, upgrades and structures stay at base price, and rare-item costs don't scale. Cancelling refunds what you actually paid. Salvage stays at 50% of the base metal cost.
 
   | Ship | Role | Notes |
   |---|---|---|
   | Wisp | Scout | Q: Sensor Ping; E: Ghost Drive (cloaked and 60% faster for 6 s, cannot fire; 30 s cooldown); detects cloaked ships |
   | Lancer | Infantry | Squad of 3 |
-  | Bulwark | Tank | T: Taunt |
-  | Longbow | Sniper | Reload 5.5 s; revealed to its victims for 4 s each time it fires; Z: Evasive Dash (leaps 400 away from the nearest threat, or straight back; 15 s cooldown) |
+  | Bulwark | Tank | T: Taunt; as fast as Lancers (165) |
+  | Longbow | Sniper | Range 850; as fast as Lancers (165); reload 5.5 s; revealed to its victims for 4 s each time it fires; Z: Evasive Dash (leaps 400 away from the nearest threat, or straight back; 15 s cooldown) |
   | Mining Barge | Hauler | Not a warship; 150 cargo, 1.5x mining speed, salvages wrecks; 4 housing |
   | Patrol Ship | Patrol | Mothership II (built at the Mothership); 1 housing; flies a circuit of every colony and back to the Mothership on its own; faster than infantry with twice its health but lighter guns; splits into 2 Patrol Skiffs when destroyed |
   | Hive | Carrier | Needs research; with **Brood Swarm** research (Military, tier 2, after Carrier Doctrine) a destroyed Hive releases **5 Broodlings**, fast fighters that keep fighting |
   | Corsair | Strike frigate pair | Station II; very fast, bonus vs light hulls |
   | Tempest | Missile cruiser | Station II; range 700, big splash: breaks up swarms |
-  | Phantom | Cloaked sniper | Station II; rare; needs research and rare items; reload 6 s; firing reveals it for 4 s, even through cloak; Z: Evasive Dash |
+  | Phantom | Cloaked sniper | Range 950; as fast as Lancers (165); Station II; rare; needs research and rare items; reload 6 s; firing reveals it for 4 s, even through cloak; Z: Evasive Dash |
   | Aegis | Shield-bubble tank | Station II; rare; needs research and rare items |
   | Sovereign | Battleship | Station III; scarce finds; twin batteries; O: Overcharge (double rate of fire for 6 s) |
-  | Halcyon | Repair cruiser | Station III; keeps pace with the fleet, repairs everything within 300 three times as fast as a Repair Station |
   | Defender | Guardian | Mothership II, built at the Mothership; max 4; 2500E / 3000M + rare items, 180 s build, 14 housing. A huge armored escort (9000 hull, 3500 shield) that **orbits the Mothership** outside the station rings and shoots anything within 560. It never leaves its post: move orders are ignored, and right-clicking an enemy near the Mothership picks its target. T: Taunt |
   | Leviathan | Massive capital ship | Station III; rare; needs research and rare items; N: Nova Cannon |
 
@@ -119,7 +120,7 @@ Requires a JDK (17 or newer; developed on 25). The first build downloads Gradle 
   - **Joining:** other players open **Multiplayer → Join LAN Game**. Games on the network appear in the list on their own, or you can type the host's IP (the lobby shows it). The game uses TCP port 47778 and UDP port 47777 for discovery.
   - **To play alone against bots,** host, add bots and start. Nobody needs to join, and the game runs offline with saves enabled.
   - **Teams:** each seat picks No team or Team 1-4. Allies share vision, never shoot each other, and win together. Players choose their own team and color; the host sets the bots'.
-  - **Bots** each have their own difficulty (see below). They **sit still for the first 3 minutes**. Their attack grace period (first strike time) still counts from the start of the game.
+  - **Bots** each have their own difficulty (see below). They **sit still for the first 8 minutes**. Their attack grace period (first strike time) still counts from the start of the game.
   - **LAN play** is deterministic lockstep: only orders travel over the network. If someone lags, the game shows "Waiting for players…". A player who leaves is replaced by a Normal bot. Pause and speed are shared. Saving is off in games with more than one human.
 - **Campaign: the Hive** (formerly the pirates-only mode): a long campaign with no rival empires, meant to be played over many sessions. Instead:
   - **The map** is a honeycomb of **91 hexagonal systems** (centre + 5 rings), joined by **jump gates** on every shared edge. You start in the **bottom** hex.
@@ -142,6 +143,8 @@ Requires a JDK (17 or newer; developed on 25). The first build downloads Gradle 
   | | Easy | Normal | Hard | Insane |
   |---|---|---|---|---|
   | Bot warship cap (regardless of housing) | 64 | 120 | 200 | unlimited |
+  | Time between bot decisions | 20 s | 10 s | 5 s | 1.5 s |
+  | Colonies a bot may hold | 3 at first, +2 every 15 min (max 14) | same | same | same |
   | Bots may attack empires from | 30 min | 17 min | 12 min | 10 min |
   | Bot income | 70% | 100% | 125% | 150% |
   | Army size before a bot attacks | much bigger | a bit bigger | smaller | smallest |
@@ -204,7 +207,7 @@ Only the selected ships take part. Ships the tactic has no place for simply atta
 |---|---|
 | Tanks | Bulwark, Aegis, Sovereign, Leviathan |
 | Infantry | Lancer, Corsair, Patrol Ship / Skiff, Broodling, Wisp |
-| Support | Hive, Halcyon |
+| Support | Hive |
 | Snipers | Longbow, Phantom, Tempest |
 
 | Tactic | Formation | In the fight |

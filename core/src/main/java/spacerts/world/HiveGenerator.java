@@ -169,7 +169,7 @@ public final class HiveGenerator {
                     }
                 }
                 for (int i = 0, n = 1 + r.nextInt(2); i < n; i++) planet(w, r, s, start, barren(r), danger);
-                if (r.nextFloat() < BELT_GIANT_CHANCE) { // the prize of the belt: millions of metal in one rock
+                if (r.nextFloat() < BELT_GIANT_CHANCE) { // the prize of the belt: a huge metal store in one rock
                     float[] p = spot(w, r, s, start, 900, 350);
                     if (p != null) GalaxyGenerator.giantAsteroid(w, r, p[0], p[1]);
                 }

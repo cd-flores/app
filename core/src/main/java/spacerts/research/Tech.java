@@ -78,7 +78,7 @@ public enum Tech {
     Tech(String title, Branch branch, int energy, int metal, float time, int tier, String prereq, String desc, int[] rare) {
         this.title = title;
         this.branch = branch;
-        this.energy = energy;
+        this.energy = energy + (energy > 0 || metal > 0 ? spacerts.units.Spec.ENERGY_SURCHARGE : 0);
         this.metal = metal;
         this.time = time;
         this.tier = tier;
