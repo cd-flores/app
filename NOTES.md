@@ -4,7 +4,7 @@ Context for picking this project up on another computer. The README describes th
 
 ## Status
 - Branch: `feature/hive-galaxy` (not merged into `main` yet).
-- Build and tests: `./gradlew :core:test --offline` (138 tests, all passing). Run the game with `./gradlew lwjgl3:run` (or `run.bat`).
+- Build and tests: `./gradlew :core:test --offline` (142 tests, all passing). Run the game with `./gradlew lwjgl3:run` (or `run.bat`).
 - Java 17+, libGDX (LWJGL3 desktop). There is no Python on the original machine, so edits were made by hand or with sed/awk.
 
 ## Ground rules of the codebase
@@ -47,6 +47,8 @@ Context for picking this project up on another computer. The README describes th
     - `AutoDefense.retreats` skips factions with an AI (`owner.ai != null`).
 
 13. **Tougher economy structures, match end**: Research Outpost 1750 hull, Solar Collector 4500, Asteroid Miner 5000 (5x). When `World.eliminate` decides a victory it also sets `World.matchOver` and `winner` (saved); `World.update` then returns at once on every machine, and the HUD shows the result (Enter: menu; C: keep playing in single player, which sets `noVictory`). Your own defeat does not freeze the world (other LAN players play on); it keeps the old defeat screen.
+
+14. **Room codes** (`net/RoomCode`, `RoomCodeTest`): the host's IPv4 address plus a 3-bit checksum, as 7 Crockford base-32 characters (`ABC-DEFG`). No server: same network or a shared VPN only. `MenuScreen` shows the code(s) in the lobby (private-network addresses first) and the join box accepts a code or a plain IP (`RoomCode.resolve`). Internet play would need a relay server.
 
 ## Performance (stress test)
 - `./gradlew :core:stressTest --offline` (`StressTest`, tagged `stress`, left out of `test`) times `World.update` with more and more near-unkillable ships and writes `core/build/reports/stress/stress-*.csv`. It asserts only correctness (no NaN), never speed.

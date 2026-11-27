@@ -221,7 +221,9 @@ class MultiplayerTest {
         lobby.entries[2].seat = Lobby.Seat.BOT;
         lobby.entries[2].name = "Bot";
         NetHost host = new NetHost(lobby);
-        NetClient client = new NetClient("127.0.0.1", "Guest");
+        // the guest joins with the room code, the way players do
+        String room = spacerts.net.RoomCode.encode("127.0.0.1");
+        NetClient client = new NetClient(spacerts.net.RoomCode.resolve(room), "Guest");
         try {
             long until = System.currentTimeMillis() + 5000;
             while ((client.lobby == null || client.seat < 0) && System.currentTimeMillis() < until) {

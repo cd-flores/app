@@ -18,6 +18,7 @@ import spacerts.net.LanDiscovery;
 import spacerts.net.Lobby;
 import spacerts.net.Lockstep;
 import spacerts.net.NetClient;
+import spacerts.net.RoomCode;
 import spacerts.net.NetHost;
 import spacerts.save.SaveManager;
 import spacerts.world.Difficulty;
@@ -55,13 +56,14 @@ public class MenuScreen extends ScreenAdapter {
     private Page page = Page.MAIN;
 
     // multiplayer
-    private final StringBuilder playerName = new StringBuilder(), joinIp = new StringBuilder();
+    private final StringBuilder playerName = new StringBuilder(), joinCode = new StringBuilder();
     private NetHost host;
     /** The lobby when hosting (with or without a working LAN host). */
     private Lobby lobby;
     private NetClient client;
     private LanDiscovery.Listener listener;
-    private String localIps;
+    /** The host's room code(s): the first is the main network, any others are extra networks (VPNs). */
+    private String roomCode, otherCodes;
 
     // widgets rebuilt every frame
     private final List<Widget> widgets = new ArrayList<>();
@@ -94,7 +96,7 @@ public class MenuScreen extends ScreenAdapter {
         cam.setToOrtho(false, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
         prefs = Gdx.app.getPreferences("nebula-dominion");
         playerName.append(prefs.getString("playerName", "Commander"));
-        joinIp.append(prefs.getString("joinIp", ""));
+        joinCode.append(prefs.getString("joinCode", ""));
         if (message != null) status = message;
     }
 
@@ -311,7 +313,7 @@ public class MenuScreen extends ScreenAdapter {
 
     private void rememberName() {
         prefs.putString("playerName", name());
-        prefs.putString("joinIp", joinIp.toString().trim());
+        prefs.putString("joinCode", joinCode.toString().trim());
         prefs.flush();
     }
 
@@ -321,7 +323,7 @@ public class MenuScreen extends ScreenAdapter {
         lobby.pirates = difficulty;
         try {
             host = new NetHost(lobby);
-            localIps = localAddresses();
+            roomCodes(localAddresses());
             go(Page.LOBBY);
         } catch (Exception e) {
             host = null;
@@ -330,15 +332,51 @@ public class MenuScreen extends ScreenAdapter {
         }
     }
 
-    private void join(String ip) {
-        if (ip == null || ip.trim().isEmpty()) {
-            status = "Enter the host's IP address, or pick a game from the list.";
+    /** Joins by room code (or, as a fallback, a plain IP address). */
+    private void join(String typed) {
+        if (typed == null || typed.trim().isEmpty()) {
+            status = "Enter the host's room code, or pick a game from the list.";
+            return;
+        }
+        String addr = RoomCode.resolve(typed);
+        if (addr == null) {
+            status = "'" + typed.trim() + "' isn't a valid room code - check it with the host.";
             return;
         }
         rememberName();
         if (client != null) client.close();
-        client = new NetClient(ip.trim(), name());
-        status = "Connecting to " + ip.trim() + "...";
+        client = new NetClient(addr, name());
+        String code = RoomCode.encode(addr);
+        status = "Connecting to room " + (code != null ? code : addr) + "...";
+    }
+
+    /** Turns the host's addresses into room codes: private-network addresses first. */
+    private void roomCodes(List<String> ips) {
+        ips.sort((a, b) -> Integer.compare(privateRank(a), privateRank(b)));
+        roomCode = null;
+        StringBuilder more = new StringBuilder();
+        for (String ip : ips) {
+            String c = RoomCode.encode(ip);
+            if (c == null) continue;
+            if (roomCode == null) roomCode = c;
+            else more.append(more.length() > 0 ? ", " : "").append(c);
+        }
+        otherCodes = more.length() > 0 ? more.toString() : null;
+    }
+
+    /** Home / office networks first (192.168.x, 10.x, 172.16-31.x), then everything else (VPNs, public). */
+    private static int privateRank(String ip) {
+        if (ip.startsWith("192.168.")) return 0;
+        if (ip.startsWith("10.")) return 1;
+        if (ip.startsWith("172.")) {
+            String[] p = ip.split("\\.");
+            try {
+                int b = Integer.parseInt(p[1]);
+                if (b >= 16 && b <= 31) return 1;
+            } catch (Exception ignored) {
+            }
+        }
+        return 2;
     }
 
     private void leaveLobby() {
@@ -391,8 +429,8 @@ public class MenuScreen extends ScreenAdapter {
         dispose();
     }
 
-    private static String localAddresses() {
-        StringBuilder sb = new StringBuilder();
+    private static List<String> localAddresses() {
+        List<String> out = new ArrayList<>();
         try {
             Enumeration<NetworkInterface> it = NetworkInterface.getNetworkInterfaces();
             while (it != null && it.hasMoreElements()) {
@@ -401,15 +439,12 @@ public class MenuScreen extends ScreenAdapter {
                 Enumeration<InetAddress> as = ni.getInetAddresses();
                 while (as.hasMoreElements()) {
                     InetAddress a = as.nextElement();
-                    if (a instanceof Inet4Address && !a.isLinkLocalAddress()) {
-                        if (sb.length() > 0) sb.append(", ");
-                        sb.append(a.getHostAddress());
-                    }
+                    if (a instanceof Inet4Address && !a.isLinkLocalAddress()) out.add(a.getHostAddress());
                 }
             }
         } catch (Exception ignored) {
         }
-        return sb.length() > 0 ? sb.toString() : "unknown";
+        return out;
     }
 
     // ------------------------------------------------------------------ per-frame logic
@@ -501,12 +536,14 @@ public class MenuScreen extends ScreenAdapter {
         for (LanDiscovery.Found g : games) {
             y -= 52;
             final String addr = g.address;
-            button(x, y, bw, bh, g.name + "    " + g.players + "/4    " + g.address, () -> join(addr));
+            String code = RoomCode.encode(addr);
+            button(x, y, bw, bh, g.name + "    " + g.players + "/4    room " + (code != null ? code : addr), () -> join(addr));
         }
         if (listener != null && listener.error != null) label(x - 100, y - 30, bw + 200, 20, listener.error, WARN, 0.95f);
         y = Math.min(y, H * 0.42f);
-        text(x, y -= 70, bw, bh, "Host IP", joinIp, 40);
-        Widget c = button(x, y -= 56, bw, bh, client != null ? "Connecting..." : "Connect", () -> join(joinIp.toString()));
+        text(x, y -= 70, bw, bh, "Room code", joinCode, 40);
+        label(x, y - 26, bw, 18, "Ask the host for their room code (for example K7Q-4MXV). The host's IP address works too.", DIM, 0.9f);
+        Widget c = button(x, y -= 66, bw, bh, client != null ? "Connecting..." : "Connect", () -> join(joinCode.toString()));
         c.enabled = client == null;
         button(x, y -= 56, bw, bh, "Back", () -> {
             if (client != null) client.close();
@@ -534,7 +571,9 @@ public class MenuScreen extends ScreenAdapter {
         float tw = Math.min(1100, W - 80), x0 = (W - tw) / 2, y = H * 0.78f;
         label(x0, y + 30, tw, 24, hosting ? "GAME LOBBY  -  you are hosting" : "GAME LOBBY", TITLE, 1.6f);
         String sub = hosting
-                ? (host != null ? "Friends join with Multiplayer > Join LAN Game (your IP: " + localIps + ")" : "Offline: bots only")
+                ? (host != null ? (roomCode != null ? "ROOM CODE  " + roomCode + "   -   friends enter it under Multiplayer > Join LAN Game"
+                        + (otherCodes != null ? "   (other networks: " + otherCodes + ")" : "")
+                        : "No network found: friends can't join, but you can play against bots") : "Offline: bots only")
                 : "Waiting for the host to start. You can pick your team and color.";
         label(x0, y, tw, 20, sub, DIM, 1f);
 
