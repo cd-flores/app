@@ -19,6 +19,8 @@ public class Faction {
     public final Color color;
     /** Not final: a human who leaves a LAN game is handed to a bot. */
     public Kind kind;
+    /** Which roster this empire builds from (flagship, builder, build lists, bot army). */
+    public spacerts.units.Race race = spacerts.units.Race.COALITION;
 
     /** Stockpiles are doubles: endgame economies (giant asteroids, refinement) reach millions. */
     public double energy, metal;
@@ -127,7 +129,7 @@ public class Faction {
 
     public float hpMult(ShipClass c) {
         float m = 1f;
-        if (c == ShipClass.MOTHERSHIP) {
+        if (c.isFlagship()) {
             if (has(Tech.MS_ARMOR)) m += 0.4f;
         } else if (!c.isBuilding()) {
             if (has(Tech.ARMOR_1)) m += 0.15f;

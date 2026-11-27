@@ -604,7 +604,7 @@ public class Hud {
                 e += back[0];
                 m += back[1];
                 n++;
-            } else if (u.cls == ShipClass.MOTHERSHIP) ms = true;
+            } else if (u.cls.isFlagship()) ms = true;
         }
         if (n == 0 && !ms) return;
         boolean surrender = n == 0;
@@ -621,7 +621,7 @@ public class Hud {
     }
 
     private void unitInfo(ShapeRenderer sr, World w, Unit u, float x, float y, float width) {
-        String title = u.s.name + (u.cls == ShipClass.MOTHERSHIP || u.cls == ShipClass.FACTORY ? "  Tier " + ProductionSystem.roman(u.tier) : "")
+        String title = u.s.name + (u.cls.isFlagship() || u.cls == ShipClass.FACTORY ? "  Tier " + ProductionSystem.roman(u.tier) : "")
                 + (u.cls == ShipClass.PIRATE_BASE && u.tier >= 3 ? " - CITADEL" : "");
         txt(x, y, title, u.owner.color, 1.1f);
         if (u.owner != w.player) txt(x + width(title, 1.1f) + 10, y, "(" + u.owner.name + ")", DIM, 0.85f);
@@ -793,7 +793,7 @@ public class Hud {
         txt(x0, top, title, TITLE, 1f);
 
         float qLimit = x1;
-        if (prod.cls == ShipClass.MOTHERSHIP) qLimit = rallyToggle(sr, p, x1, top) - 8;
+        if (prod.cls.isFlagship()) qLimit = rallyToggle(sr, p, x1, top) - 8;
         float qx = x0 + Math.max(260, width(title, 1f) + 30);
         txt(qx, top, "Queue:", DIM, 0.85f);
         qx += 52;
@@ -816,7 +816,7 @@ public class Hud {
             if (hov) tooltip = c.s.name + "\nClick to cancel (full refund).";
         }
 
-        ShipClass[] list = prod.cls.buildList();
+        ShipClass[] list = prod.cls.buildList(prod.owner.race);
         float bw = 156, bh = 42, gap = 6;
         int cols = Math.max(1, (int) ((x1 - x0 + gap) / (bw + gap)));
         for (int i = 0; i < list.length; i++) {
@@ -878,7 +878,7 @@ public class Hud {
         else state = "Cost is paid when ordered and refunded if the harvester stops or dies.";
         txt(x0 + width(title, 1f) + 24, top, state, DIM, 0.8f);
 
-        ShipClass[] list = h.cls.buildList();
+        ShipClass[] list = h.cls.buildList(h.owner.race);
         float gap = 6, bh = 42;
         float bw = Math.min(190, (x1 - x0 - gap * (list.length - 1)) / list.length);
         for (int i = 0; i < list.length; i++) {
@@ -1249,7 +1249,7 @@ public class Hud {
             if (u.owner == w.natives || !sys.contains(u.x, u.y)) continue;
             if (u.cls == ShipClass.PIRATE_BASE) sr.setColor(1f, 0.3f, 0.25f, 1f);
             else sr.setColor(u.owner.color);
-            float sz = u.cls == ShipClass.MOTHERSHIP || u.cls == ShipClass.PIRATE_BASE ? 5 : (u.cls.isBuilding() ? 2.5f : 1.6f);
+            float sz = u.cls.isFlagship() || u.cls == ShipClass.PIRATE_BASE ? 5 : (u.cls.isBuilding() ? 2.5f : 1.6f);
             sr.rect(ox + u.x * s - sz / 2, oy + u.y * s - sz / 2, sz, sz);
         }
         Faction pl = w.player;
@@ -1546,7 +1546,7 @@ public class Hud {
         float bw = 520, bh = 200;
         overlayBox(sr, bw, bh);
         float x = (W - bw) / 2, y = (H + bh) / 2;
-        aligned(x, y - 30, bw, "MOTHERSHIP DESTROYED", World.ALERT, 1.6f, Align.center);
+        aligned(x, y - 30, bw, w.player.race.flagship.s.name.toUpperCase() + " DESTROYED", World.ALERT, 1.6f, Align.center);
         aligned(x, y - 80, bw, "You survived " + clock(w.time) + ".", Color.WHITE, 1.1f, Align.center);
         aligned(x, y - 140, bw, "Press Enter to return to the main menu", DIM, 1f, Align.center);
     }

@@ -177,7 +177,7 @@ public final class PirateBases {
     static StarSystem respawnSystem(World w, List<Unit> bases) {
         List<StarSystem> mine = new ArrayList<>();
         for (Unit u : w.units)
-            if (!u.dead && u.owner == w.player && (u.cls == ShipClass.COLONY || u.cls == ShipClass.MOTHERSHIP)) mine.add(w.systemAt(u.x, u.y));
+            if (!u.dead && u.owner == w.player && (u.cls == ShipClass.COLONY || u.cls.isFlagship())) mine.add(w.systemAt(u.x, u.y));
         int frontier = spacerts.systems.ConquestSystem.frontier(w);
         List<StarSystem> ok = new ArrayList<>();
         for (StarSystem s : w.galaxy.systems) {

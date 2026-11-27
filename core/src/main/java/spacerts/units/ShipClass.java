@@ -11,9 +11,9 @@ import static spacerts.units.ArmorType.*;
 public enum ShipClass {
     MOTHERSHIP(new Spec("Mothership", "Your flagship. Builds Harvesters. If it dies, you lose.")
             .hp(12000).shield(1500, 15).armor(0.35f).speed(28).weapon(450, 28, 0.5f)
-            .vision(950).radius(60).type(HEAVY).producer().ability(Ability.WARP)),
+            .vision(950).radius(60).type(HEAVY).producer().flagship().ability(Ability.WARP)),
     HARVESTER(new Spec("Harvester", "Collects energy and metal. Also builds Ship Stations, the Research Hub, planet defenses and Repair Stations.")
-            .cost(50, 0, 2).hp(120).speed(115).vision(350).radius(10).build(6).harvester()),
+            .cost(50, 0, 2).hp(120).speed(115).vision(350).radius(10).build(6).harvester().builder()),
     COLONY_SHIP(new Spec("Colony Ship", "Settles a habitable planet for housing. Defended worlds must be cleared first.")
             .cost(200, 150, 3).hp(260).armor(0.1f).speed(75).vision(400).radius(15).build(16).colonizer()),
     SURVEYOR(new Spec("Surveyor", "Lands on an uninhabitable planet and builds a Research Outpost that extracts rare items.")
@@ -173,16 +173,6 @@ public enum ShipClass {
         this.s = s;
     }
 
-    private static final ShipClass[] MS_BUILD = {HARVESTER, PATROL, DEFENDER, MS_TIER_2, MS_TIER_3, STELLAR_REFINEMENT};
-    private static final ShipClass[] FACTORY_BUILD = {COLONY_SHIP, WISP, LANCER, BULWARK, LONGBOW, HIVE, BARGE, CORSAIR, TEMPEST, PYRE,
-            PHANTOM, AEGIS, SOVEREIGN, LEVIATHAN, FACTORY_TIER_2, FACTORY_TIER_3};
-    /** Legacy: shipyards from older saves keep working. */
-    private static final ShipClass[] YARD_BUILD = {COLONY_SHIP, WISP, LANCER, BULWARK, LONGBOW, HIVE, PHANTOM, AEGIS, BARGE};
-    private static final ShipClass[] HUB_BUILD = {SURVEYOR};
-    private static final ShipClass[] COMMAND_BUILD = {CC_BULLDOZER, CC_PINCER, CC_FLANK, CC_FOCUS, CC_MARTYR, CC_CRIPPLE, CC_RAM, CC_SHIELD_WALL, CC_REPLENISH};
-    /** Planet upgrades (DEF_TURRET / DEF_SHIELD) are ordered from the colony itself, not from this list. */
-    private static final ShipClass[] HARVESTER_BUILD = {FACTORY, HUB, MENDER, SOLAR, MINER, COMMAND, BEACON, PLATFORM, REFINERY, SENSOR, ION_CANNON, ASCENSION};
-
     public boolean isUpgrade() {
         return s.upgradeTo > 0;
     }
@@ -201,18 +191,19 @@ public enum ShipClass {
     public boolean targetsBody() {
         return isPlanetUpgrade() || isExtractor();
     }
-    private static final ShipClass[] NONE = {};
+    /** What this producer makes for the given race (see Race). */
+    public ShipClass[] buildList(Race r) {
+        return r.buildList(this);
+    }
 
-    public ShipClass[] buildList() {
-        switch (this) {
-            case MOTHERSHIP: return MS_BUILD;
-            case FACTORY: return FACTORY_BUILD;
-            case SHIPYARD: return YARD_BUILD;
-            case HUB: return HUB_BUILD;
-            case COMMAND: return COMMAND_BUILD;
-            case HARVESTER: return HARVESTER_BUILD;
-            default: return NONE;
-        }
+    /** A race's flagship (the Mothership): losing it loses the game; it has tiers and the Mothership research applies to it. */
+    public boolean isFlagship() {
+        return s.flagship;
+    }
+
+    /** Builds structures (the Harvester). */
+    public boolean isBuilder() {
+        return s.builder;
     }
 
     /** Structures a harvester flies to and places in open space (the rest go on a star, asteroid or colony). */

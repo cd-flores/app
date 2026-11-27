@@ -60,7 +60,7 @@ public class AutoDefense {
         for (Unit u : w.units) {
             if (u.dead) continue;
             if (u.owner == p) {
-                if (u.cls == ShipClass.MOTHERSHIP || (u.cls.isBuilding() && u.cls != ShipClass.TURRET)) assets.add(u);
+                if (u.cls.isFlagship() || (u.cls.isBuilding() && u.cls != ShipClass.TURRET)) assets.add(u);
             } else if (hostile(p, u) && !u.cls.isBuilding() && w.canSee(p, u)) threats.add(u);
         }
         // keep only threats close to one of our bases

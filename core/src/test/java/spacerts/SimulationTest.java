@@ -853,7 +853,7 @@ class SimulationTest {
         assertEquals(1, col.turretPoints, "turret upgrade built");
         run(w, 1);
         assertEquals(spacerts.units.Order.HARVEST, h.order, "back to harvesting");
-        for (ShipClass c : ShipClass.HARVESTER.buildList()) assertFalse(c.isPlanetUpgrade(), "upgrades moved off the harvester list");
+        for (ShipClass c : ShipClass.HARVESTER.buildList(spacerts.units.Race.COALITION)) assertFalse(c.isPlanetUpgrade(), "upgrades moved off the harvester list");
     }
 
     @Test

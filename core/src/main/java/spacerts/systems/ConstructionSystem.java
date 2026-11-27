@@ -59,7 +59,7 @@ public class ConstructionSystem {
         Unit best = null;
         float bd = Float.MAX_VALUE;
         for (Unit u : w.units) {
-            if (u.dead || u.owner != f || u.cls != ShipClass.HARVESTER || u.buildCls != null) continue;
+            if (u.dead || u.owner != f || !u.cls.isBuilder() || u.buildCls != null) continue;
             float d = u.dist(site.x, site.y) + (u.fleeTimer > 0 ? 100000 : 0);
             if (d < bd) { bd = d; best = u; }
         }
@@ -68,7 +68,7 @@ public class ConstructionSystem {
 
     /** Full check for a specific harvester / target, or null when the order is allowed. */
     public String blocker(Unit h, ShipClass c, Body body, float x, float y) {
-        if (h == null || h.dead || h.cls != ShipClass.HARVESTER) return "Select a harvester to build";
+        if (h == null || h.dead || !h.cls.isBuilder()) return "Select a harvester to build";
         Faction f = h.owner;
         String base = baseBlocker(f, c);
         if (base != null) return base;

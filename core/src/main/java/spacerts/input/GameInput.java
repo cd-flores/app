@@ -554,12 +554,12 @@ public class GameInput extends InputAdapter {
                 }
                 Unit p = activeProducer();
                 if (p != null) {
-                    ShipClass[] list = p.cls.buildList();
+                    ShipClass[] list = p.cls.buildList(p.owner.race);
                     if (i < list.length) enqueue(p, list[i], false);
                 } else {
                     Unit h = activeBuilder();
                     if (h != null) {
-                        ShipClass[] list = h.cls.buildList();
+                        ShipClass[] list = h.cls.buildList(h.owner.race);
                         if (i < list.length) startBuild(list[i]);
                     }
                 }
@@ -622,7 +622,7 @@ public class GameInput extends InputAdapter {
             case Input.Keys.U: { // queue the next tier upgrade on the selected Mothership / Ship Station
                 Unit p = activeProducer();
                 if (p == null) return true;
-                for (ShipClass c : p.cls.buildList())
+                for (ShipClass c : p.cls.buildList(p.owner.race))
                     if (c.isUpgrade() && c.s.upgradeTo == p.tier + 1) {
                         enqueue(p, c, true);
                         return true;
@@ -821,7 +821,7 @@ public class GameInput extends InputAdapter {
         boolean ms = false;
         for (Unit u : ownSelected()) {
             if (CommandExecutor.destroyable(u)) mine.add(u);
-            else if (u.cls == ShipClass.MOTHERSHIP) ms = true;
+            else if (u.cls.isFlagship()) ms = true;
         }
         if (!mine.isEmpty()) gs.issue(new Command(Command.Type.DESTROY, 0).units(mine));
         else if (ms) gs.confirmSurrender = true;
@@ -831,7 +831,7 @@ public class GameInput extends InputAdapter {
     private void aimWarp() {
         World w = w();
         Unit ms = null;
-        for (Unit u : ownSelected()) if (u.cls == ShipClass.MOTHERSHIP) ms = u;
+        for (Unit u : ownSelected()) if (u.cls.isFlagship()) ms = u;
         if (ms == null) return;
         float cd = ms.abilityCds[Ability.WARP.ordinal()];
         if (ms.tier < 2) w.notify(w.player, "Warp Jump needs Mothership tier II.", World.INFO);

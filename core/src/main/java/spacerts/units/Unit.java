@@ -172,14 +172,14 @@ public class Unit {
 
     /** Mothership upgrades: +30% hull and shield per tier above I; the Pirate Citadel (tier 3 base) is 3x a stronghold. */
     private float tierMult() {
-        if (cls == ShipClass.MOTHERSHIP) return 1f + 0.3f * (tier - 1);
+        if (cls.isFlagship()) return 1f + 0.3f * (tier - 1);
         if (cls == ShipClass.PIRATE_BASE && tier >= 3) return 3f;
         return 1f;
     }
 
     /** Targets hit per volley: each Mothership tier adds a gun. */
     public int multi() {
-        return s.multi + (cls == ShipClass.MOTHERSHIP || (cls == ShipClass.PIRATE_BASE && tier >= 3) ? tier - 1 : 0);
+        return s.multi + (cls.isFlagship() || (cls == ShipClass.PIRATE_BASE && tier >= 3) ? tier - 1 : 0);
     }
 
     /** Sovereign Overcharge: rate of fire doubled while > 0. */

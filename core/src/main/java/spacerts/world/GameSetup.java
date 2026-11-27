@@ -30,6 +30,7 @@ public class GameSetup {
         /** 0 = no team (free-for-all), otherwise 1-4. */
         public int team;
         public int colorIndex;
+        public spacerts.units.Race race = spacerts.units.Race.COALITION;
 
         public Slot(boolean human, String name, int colorIndex) {
             this.human = human;
@@ -41,6 +42,7 @@ public class GameSetup {
             Slot s = new Slot(human, name, colorIndex);
             s.botDifficulty = botDifficulty;
             s.team = team;
+            s.race = race;
             return s;
         }
     }
@@ -113,6 +115,7 @@ public class GameSetup {
             out.writeByte(s.botDifficulty.ordinal());
             out.writeByte(s.team);
             out.writeByte(s.colorIndex);
+            out.writeByte(s.race.ordinal());
         }
     }
 
@@ -129,6 +132,7 @@ public class GameSetup {
             s.botDifficulty = Difficulty.values()[in.readByte()];
             s.team = in.readByte();
             s.colorIndex = in.readByte();
+            s.race = spacerts.units.Race.of(in.readByte());
             g.slots.add(s);
         }
         return g;

@@ -33,8 +33,8 @@ public class UnitBehavior {
         // regeneration & timers
         if (u.shield < u.maxShield() && w.time - u.lastHit > 4f)
             u.shield = Math.min(u.maxShield(), u.shield + u.shieldRegen() * u.owner.shieldRegenMult() * dt);
-        if (u.owner.has(Tech.MS_REPAIR) && (u.cls == ShipClass.MOTHERSHIP || u.cls.isBuilding()) && u.hp < u.maxHp())
-            w.repair(u, (u.cls == ShipClass.MOTHERSHIP ? 12f : 4f) * Unit.DURABILITY * dt); // paid in metal
+        if (u.owner.has(Tech.MS_REPAIR) && (u.cls.isFlagship() || u.cls.isBuilding()) && u.hp < u.maxHp())
+            w.repair(u, (u.cls.isFlagship() ? 12f : 4f) * Unit.DURABILITY * dt); // paid in metal
         boolean refit = u.owner.has(Tech.RAPID_REFIT); // Rapid Refit Docks: 4%/s, starting 3 s after combat
         if (!u.s.stationary && u.hp < u.maxHp() && w.time - u.lastHit > (refit ? REPAIR_DELAY / 2 : REPAIR_DELAY)
                 && w.nearestRepairPoint(u.owner, u.x, u.y, REPAIR_RANGE, false) != null)

@@ -17,7 +17,7 @@ public final class Protocol {
     public static final int TCP_PORT = 47778;
     public static final int DISCOVERY_PORT = 47777;
     /** Bumped whenever the wire format or the simulation changes in a way that breaks lockstep between versions. */
-    public static final int VERSION = 7; // 7: Warp Jump target point, loading handshake (READY / GO)
+    public static final int VERSION = 8; // 8: race per empire slot; 7: Warp Jump target point, loading handshake (READY / GO)
     public static final String DISCOVERY_MAGIC = "NEBULA_DOMINION_LAN";
 
     /** client -> host: version, player name. */

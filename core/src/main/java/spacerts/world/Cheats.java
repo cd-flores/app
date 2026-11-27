@@ -182,7 +182,7 @@ public final class Cheats {
                 f.researching2 = null;
                 f.researchProgress2 = 0;
                 for (Unit u : w.units)
-                    if (!u.dead && u.owner == f && (u.cls == ShipClass.MOTHERSHIP || u.cls == ShipClass.FACTORY) && u.tier < 3) {
+                    if (!u.dead && u.owner == f && (u.cls.isFlagship() || u.cls == ShipClass.FACTORY) && u.tier < 3) {
                         float hp = u.hp / u.maxHp(), sh = u.maxShield() > 0 ? u.shield / u.maxShield() : 0;
                         u.tier = 3;
                         u.hp = u.maxHp() * hp;
@@ -261,9 +261,9 @@ public final class Cheats {
         }
         List<Unit> movers = new ArrayList<>();
         for (Unit u : w.units)
-            if (!u.dead && u.owner == f && (u.cls == ShipClass.MOTHERSHIP || u.cls.isStation() || u.cls.isWarship())) movers.add(u);
+            if (!u.dead && u.owner == f && (u.cls.isFlagship() || u.cls.isStation() || u.cls.isWarship())) movers.add(u);
         if (movers.isEmpty()) return "Motherland: nothing to move.";
-        movers.sort((a, b) -> a.cls == ShipClass.MOTHERSHIP ? -1 : b.cls == ShipClass.MOTHERSHIP ? 1 : Integer.compare(a.id, b.id));
+        movers.sort((a, b) -> a.cls.isFlagship() ? -1 : b.cls.isFlagship() ? 1 : Integer.compare(a.id, b.id));
         for (int i = 0; i < movers.size(); i++) {
             Unit u = movers.get(i);
             float ox = 0, oy = 0;

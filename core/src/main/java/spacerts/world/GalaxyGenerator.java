@@ -104,10 +104,10 @@ public final class GalaxyGenerator {
     static void startingFleet(World w, Faction f, float sx, float sy) {
         f.energy = 700;
         f.metal = 600;
-        w.spawn(ShipClass.MOTHERSHIP, f, sx, sy);
+        w.spawn(f.race.flagship, f, sx, sy);
         for (int h = 0; h < 4; h++)
-            w.spawn(ShipClass.HARVESTER, f, sx + 90 + h * 25, sy - 80);
-        Unit wisp = w.spawn(ShipClass.WISP, f, sx - 100, sy + 90);
+            w.spawn(f.race.worker, f, sx + 90 + h * 25, sy - 80);
+        Unit wisp = w.spawn(f.race.scout, f, sx - 100, sy + 90);
         wisp.anchorX = wisp.x;
         wisp.anchorY = wisp.y;
         for (int l = 0; l < 3; l++) w.spawn(ShipClass.LANCER, f, sx - 100 + l * 25, sy - 100);

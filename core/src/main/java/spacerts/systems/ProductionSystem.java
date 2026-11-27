@@ -134,7 +134,7 @@ public class ProductionSystem {
     public String blocker(Unit p, ShipClass c) {
         Faction f = p.owner;
         boolean listed = false;
-        for (ShipClass b : p.cls.buildList()) if (b == c) listed = true;
+        for (ShipClass b : p.cls.buildList(p.owner.race)) if (b == c) listed = true;
         if (!listed) return p.s.name + " can't build " + c.s.name;
         if (c.s.tech != null && !f.has(c.s.tech) && !f.synergy) return "Requires research: " + c.s.tech.title;
         if (c.isCommandUnlock()) {
@@ -151,7 +151,7 @@ public class ProductionSystem {
             for (ShipClass q : p.queue.items) if (q.isUpgrade()) return "Upgrade already in progress";
         }
         if (p.cls == ShipClass.FACTORY && c.s.factoryTier > p.tier && !f.synergy) return "Requires a tier " + roman(c.s.factoryTier) + " Ship Station";
-        if (p.cls == ShipClass.MOTHERSHIP && !c.isUpgrade() && c.s.msTier > p.tier && !f.synergy)
+        if (p.cls.isFlagship() && !c.isUpgrade() && c.s.msTier > p.tier && !f.synergy)
             return "Requires Mothership tier " + roman(c.s.msTier);
         if (c == ShipClass.STELLAR_REFINEMENT) {
             if (p.tier < 3) return "Requires Mothership tier III";

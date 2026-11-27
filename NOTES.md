@@ -4,7 +4,7 @@ Context for picking this project up on another computer. The README describes th
 
 ## Status
 - Branch: `feature/hive-galaxy` (not merged into `main` yet).
-- Build and tests: `./gradlew :core:test --offline` (152 tests, all passing). Run the game with `./gradlew lwjgl3:run` (or `run.bat`).
+- Build and tests: `./gradlew :core:test --offline` (158 tests). Run the game with `./gradlew lwjgl3:run` (or `run.bat`).
 - Java 17+, libGDX (LWJGL3 desktop). There is no Python on the original machine, so edits were made by hand or with sed/awk.
 
 ## Ground rules of the codebase
@@ -12,7 +12,7 @@ Context for picking this project up on another computer. The README describes th
   - every player action is a `net/Command`, applied by `net/CommandExecutor`. Never mutate the world directly from input or UI code: go through `GameScreen.issue(cmd)`;
   - simulation code must never branch on `w.player` (the local player) except for cosmetic things: `World.notify` (messages to one faction), rings / effects, local UI;
   - randomness inside the simulation uses `w.rng` (or another seeded stream), never `Math.random`.
-- **When you add a Command type, bump `net/Protocol.VERSION`** (currently **7**), so mismatched builds refuse to connect.
+- **When you add a Command type, bump `net/Protocol.VERSION`** (currently **8**), so mismatched builds refuse to connect.
 - Saves are `save/SaveManager` (libGDX reflection JSON over the `SaveData` / `FactionData` / `UnitData` classes). Add new persistent fields there in both directions. Tactical formations are deliberately not saved.
 - Tests live in `core/src/test/java/spacerts/`. `SimulationTest` is the original suite. Newer ones: `MultiplayerTest` (LAN, bots, teams), `GameplayTest` (stations, Defender, upkeep, skills, destroy, chat), `CheatTest`, `TacticsTest`.
 
@@ -57,6 +57,12 @@ Context for picking this project up on another computer. The README describes th
     - Ctrl+A uses `GameInput.isArmy` (no Patrol Ships). `NetClient.close()` works while still connecting, and the menu ignores repeat joins (double-click fix).
     - LAN loading: `GameScreen.renderLoading` draws the game behind a loading screen, warms the simulation on a throwaway world (`warmUp`), then `Lockstep.markReady()`. READY / GO messages (`Protocol` 12 / 13); no turns before GO; the host drops anyone not ready after `READY_TIMEOUT` (60 s). Headless timing showed the simulation and network are cheap at start (galaxy ~60 ms, first game second ~20 ms, LAN lockstep with no waits), so the start-up lag is most likely first-frame rendering on a cold JVM, which now happens behind the loading screen.
     - Research panel: one column per branch (`Tech.PANEL_BRANCHES`, `Tech.branchOrder`), tiers ascending with follow-ups under their prerequisites; tall branches wrap.
+
+16. **Race groundwork** (`RaceTest`), no change in play:
+    - `units/Race.java`: each race names its `flagship`, `worker` (builder) and `scout`, what each producer builds (`buildList(ShipClass)`), and the bot's army mix (`botArmy`, `botCapital`, `botBattleship`). The current roster is `Race.COALITION`, the only race so far.
+    - `Faction.race` (from `GameSetup.Slot.race`, sent in the lobby setup, saved as `FactionData.race`; older saves load as COALITION). `Protocol.VERSION` 8.
+    - `ShipClass.buildList(Race)` replaces the old global lists. Role checks use `ShipClass.isFlagship()` / `isBuilder()` (`Spec.flagship()` / `builder()`) instead of `== MOTHERSHIP` / `== HARVESTER`; the starting fleet, colony harvesters and the bot's worker/scout come from the race.
+    - To add a race: new ships in `ShipClass` (one marked `.flagship()`, one `.builder()`), a constant at the END of `Race` with its lists, `TacticsSystem.role` lines, `WorldRenderer` shapes, and a race pick in the lobby (`MenuScreen`; there's none yet since only one race exists). Still shared by every race: the tech tree, the structure roster, the Mothership tier upgrades (`MS_TIER_2/3`) and Warp Jump.
 
 ## Performance (stress test)
 - `./gradlew :core:stressTest --offline` (`StressTest`, tagged `stress`, left out of `test`) times `World.update` with more and more near-unkillable ships and writes `core/build/reports/stress/stress-*.csv`. It asserts only correctness (no NaN), never speed.

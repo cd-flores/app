@@ -22,6 +22,8 @@ public class Spec {
     /** Only exists in the pirates-only Hive galaxy (Claim Beacon, Ascension Gate). */
     public boolean hiveOnly;
     public boolean piercing, mustStop, cloak, stationary, harvester, colonizer, surveyor, producer, internal, detector;
+    /** flagship: the race's Mothership (losing it loses the game, it gets the Mothership tiers). builder: builds structures. */
+    public boolean flagship, builder;
     public int drones, squad = 1, multi = 1, cap;
     /** Incendiary weapons: every hit sets the target burning for burnTime seconds at burnDps (armor ignored). */
     public float burnDps, burnTime;
@@ -82,6 +84,8 @@ public class Spec {
     public Spec colonizer() { colonizer = true; return this; }
     public Spec surveyor() { surveyor = true; return this; }
     public Spec producer() { producer = true; return this; }
+    public Spec flagship() { flagship = true; return this; }
+    public Spec builder() { builder = true; return this; }
     public Spec internal() { internal = true; return this; }
     public Spec detector() { detector = true; return this; }
     public Spec vision(float v) { vision = v; return this; }

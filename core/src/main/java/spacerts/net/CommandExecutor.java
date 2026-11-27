@@ -201,7 +201,7 @@ public final class CommandExecutor {
 
     /** Ships and structures the player built can be scuttled; colonies, turrets, outposts, drones and the Mothership can't. */
     public static boolean destroyable(Unit u) {
-        return !u.dead && !u.s.internal && u.cls != ShipClass.MOTHERSHIP;
+        return !u.dead && !u.s.internal && !u.cls.isFlagship();
     }
 
     /** {energy, metal} refunded for scuttling u (rare items: floor of 25% each, see scuttleRare). */

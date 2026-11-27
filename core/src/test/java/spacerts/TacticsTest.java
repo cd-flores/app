@@ -98,7 +98,7 @@ class TacticsTest {
         Faction p = w.player;
         assertTrue(ShipClass.COMMAND.isStation());
         boolean listed = false;
-        for (ShipClass c : ShipClass.HARVESTER.buildList()) if (c == ShipClass.COMMAND) listed = true;
+        for (ShipClass c : ShipClass.HARVESTER.buildList(spacerts.units.Race.COALITION)) if (c == ShipClass.COMMAND) listed = true;
         assertTrue(listed, "built by Harvesters");
         Unit cc = spawn(w, ShipClass.COMMAND, p, p.mothership.x + 400, p.mothership.y);
         assertEquals("Only one Command Center", w.construction.baseBlocker(p, ShipClass.COMMAND));

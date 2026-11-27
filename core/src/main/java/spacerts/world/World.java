@@ -113,6 +113,7 @@ public class World {
             Faction f = add(new Faction(factions.size(), s.name, c, s.human ? Faction.Kind.PLAYER : Faction.Kind.RIVAL));
             f.team = campaign ? 0 : s.team;
             f.difficulty = s.botDifficulty != null ? s.botDifficulty : Difficulty.NORMAL;
+            f.race = s.race != null ? s.race : spacerts.units.Race.COALITION;
             if (i == setup.localSlot) local = f;
         }
         player = local != null ? local : factions.get(0);
@@ -281,7 +282,7 @@ public class World {
             if (u.s.detector) f.detectors.add(u);
             if (u.s.aura > 0) f.auras.add(u);
             if (u.cls == ShipClass.COLONY && u.home != null) f.colonies.add(u);
-            if (u.cls == ShipClass.COLONY || u.cls == ShipClass.MOTHERSHIP || u.cls == ShipClass.FACTORY || u.cls == ShipClass.SHIPYARD
+            if (u.cls == ShipClass.COLONY || u.cls.isFlagship() || u.cls == ShipClass.FACTORY || u.cls == ShipClass.SHIPYARD
                     || u.cls == ShipClass.REFINERY)
                 f.docks.add(u);
         }
@@ -343,7 +344,7 @@ public class World {
     public Unit spawn(ShipClass c, Faction f, float x, float y) {
         Unit u = new Unit(nextId++, c, f, clampX(x, y), clampY(x, y));
         pending.add(u);
-        if (c == ShipClass.MOTHERSHIP) f.mothership = u;
+        if (c.isFlagship()) f.mothership = u;
         if (c == ShipClass.HUB) {
             if (f.hub == null || f.hub.dead) f.hub = u;
             else f.hub2 = u; // the second lab (Mothership tier II)
@@ -458,12 +459,12 @@ public class World {
             if (!u.silent && f == player) notify(f, "Harvester lost - construction of " + u.buildCls.s.name + " refunded.", ALERT);
             u.cancelBuild();
         }
+        if (u.cls.isFlagship()) {
+            if (f.noDefeat && !f.eliminated) // StrengthAndHonor cheat: the empire fights on without its flagship
+                notify(f, "Strength and Honor: your " + u.s.name + " fell, but your empire fights on.", ALERT);
+            else eliminate(f);
+        }
         switch (u.cls) {
-            case MOTHERSHIP:
-                if (f.noDefeat && !f.eliminated) // StrengthAndHonor cheat: the empire fights on without its flagship
-                    notify(f, "Strength and Honor: your Mothership fell, but your empire fights on.", ALERT);
-                else eliminate(f);
-                break;
             case PIRATE_BASE:
                 if (!u.silent) PirateBases.onBaseDestroyed(this, u);
                 break;
@@ -596,7 +597,7 @@ public class World {
         boolean settlers = f.isMajor();
         if (settlers) { // every new colony comes with a harvester that starts working straight away
             double a = rng.nextDouble() * Math.PI * 2;
-            Unit h = spawn(ShipClass.HARVESTER, f, p.x + (float) Math.cos(a) * (p.radius + 30), p.y + (float) Math.sin(a) * (p.radius + 30));
+            Unit h = spawn(f.race.worker, f, p.x + (float) Math.cos(a) * (p.radius + 30), p.y + (float) Math.sin(a) * (p.radius + 30));
             economy.autoAssign(h);
         }
         notify(f, "Colony established on " + p.name + " (+" + (int) p.housing(f) + " housing" + (settlers ? ", +1 harvester)" : ")"), GOOD);
@@ -708,7 +709,7 @@ public class World {
         StarSystem here = galaxy.hive ? systemAt(x, y) : null;
         for (Unit u : units) {
             if (u.dead || u.owner != f) continue;
-            if (u.cls != ShipClass.MOTHERSHIP && u.cls != ShipClass.COLONY && u.cls != ShipClass.REFINERY) continue;
+            if (!u.cls.isFlagship() && u.cls != ShipClass.COLONY && u.cls != ShipClass.REFINERY) continue;
             float d = u.dist(x, y);
             if (here != null && systemAt(u.x, u.y) != here) d += 1e6f; // prefer a drop-off in the same system
             if (d < bd) {
