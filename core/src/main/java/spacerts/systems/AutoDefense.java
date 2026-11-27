@@ -143,7 +143,7 @@ public class AutoDefense {
      */
     public void retreats() {
         for (Unit u : w.units) {
-            if (u.dead || !u.owner.isMajor() || !u.cls.isWarship() || u.cls == ShipClass.DEFENDER) continue;
+            if (u.dead || !u.owner.isMajor() || u.owner.ai != null || !u.cls.isWarship() || u.cls == ShipClass.DEFENDER) continue; // bots fight on
             float frac = u.hp / u.maxHp();
             if (frac >= Unit.RETREAT_DONE) u.retreatOverridden = false;
             if (u.retreating) {

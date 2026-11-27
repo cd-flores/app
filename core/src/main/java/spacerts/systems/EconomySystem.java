@@ -34,6 +34,7 @@ public class EconomySystem {
             } else if (u.cls == ShipClass.MINER) mine(u, dt);
             else if (u.cls == ShipClass.COLONY && u.home != null && u.owner.isMajor()) {
                 float rate = colonyIncome(u.home) * incomeMult(u.owner);
+                launchBuoys(u, dt);
                 u.owner.energy += rate * dt;
                 u.owner.metal += rate * dt;
             }
@@ -43,6 +44,7 @@ public class EconomySystem {
         for (int i = 0, n = w.bodies.size(); i < n; i++) {
             Body b = w.bodies.get(i);
             if (b.isWreck() && !b.dead && (b.life -= dt * decay) <= 0) b.dead = true; // drifted away (IocainePowder: fast)
+            if (b.buoyRings > 0 && !b.colonized()) { b.buoyRings = 0; b.buoyTimer = 0; } // the colony is gone: so are its buoys
         }
         asteroidTimer -= dt;
         if (asteroidTimer <= 0) {
@@ -159,6 +161,17 @@ public class EconomySystem {
         w.grantRare(f, RareItem.NEUTRONIUM, neutron, x, y);
         w.grantRare(f, RareItem.EXOTIC_MATTER, b.lootExotic, x, y + 18);
         b.lootNeutron = b.lootExotic = 0;
+    }
+
+    /** Colony buoys: a new ring of vision beacons every Body.BUOY_PERIOD seconds, up to Body.BUOY_MAX_RINGS. */
+    private void launchBuoys(Unit colony, float dt) {
+        Body b = colony.home;
+        if (b.buoyRings >= Body.BUOY_MAX_RINGS) return;
+        b.buoyTimer += dt;
+        if (b.buoyTimer < Body.BUOY_PERIOD) return;
+        b.buoyTimer = 0;
+        b.buoyRings++;
+        w.ring(b.x, b.y, b.radius + Body.BUOY_SPACING * b.buoyRings, colony.owner.color, 1.2f);
     }
 
     /** Energy per second from a Solar Collector (harvest research and difficulty apply). */

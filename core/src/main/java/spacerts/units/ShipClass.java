@@ -26,9 +26,9 @@ public enum ShipClass {
             .cost(30, 20, 2).hp(60).speed(230).weapon(130, 4, 0.5f).vision(1150).radius(8).build(5)
             .ability(Ability.PING).ability(Ability.GHOST).detector()),
     LANCER(new Spec("Lancer", "INFANTRY squad of 3. Cheap, fast swarm DPS. Bonus damage vs snipers.")
-            .cost(120, 120, 1).squad(3).hp(110).armor(0.1f).speed(165).weapon(170, 7, 0.25f)
+            .cost(120, 120, 1).squad(3).hp(330).armor(0.1f).speed(165).weapon(170, 14, 0.25f)
             .bonus(ARTILLERY, 2.5f).vision(520).radius(9).build(7)),
-    PATROL(new Spec("Patrol Ship", "PATROL. Built at a tier II Mothership. Flies a circuit of every colony and back to the Mothership on its own. Faster and twice as tough as infantry, lighter guns. Splits into 2 skiffs when destroyed.")
+    PATROL(new Spec("Patrol Ship", "PATROL. Built at a tier II Mothership. Flies a circuit of every colony and back to the Mothership on its own. Faster than infantry, lighter guns. Splits into 2 skiffs when destroyed.")
             .cost(110, 90, 1).hp(220).armor(0.1f).speed(200).weapon(180, 4, 0.3f).vision(600).radius(11).build(9).msTier(2)),
     PATROL_SKIFF(new Spec("Patrol Skiff", "What's left of a Patrol Ship: a fast little fighter that keeps the patrol going.")
             .hp(60).speed(230).weapon(150, 3, 0.3f).vision(450).radius(7)),
@@ -61,6 +61,9 @@ public enum ShipClass {
             .weapon(700, 45, 0.35f).multi(4).vision(950).radius(70).build(90).type(HEAVY)
             .ability(Ability.NOVA).detector().cap(1).tech(Tech.LEVIATHAN_TECH).factoryTier(3)),
     // ---- unlocked by Ship Station upgrades
+    PYRE(new Spec("Pyre", "INCENDIARY FRIGATE. Short-range flamer with splash; every hit sets ships burning for 4 s. Deals 4x damage to Hive drones and Broodlings. Station tier II.")
+            .cost(400, 450, 7).hp(1600).shield(300, 10).armor(0.3f).speed(75).weapon(200, 22, 0.6f).splash(90)
+            .burn(10, 4).antiSwarm(4f).vision(500).radius(22).build(26).type(HEAVY).factoryTier(2)),
     CORSAIR(new Spec("Corsair", "STRIKE FRIGATE pair. Very fast; hunts raiders, scouts and harvesters (bonus vs light hulls). Station tier II.")
             .cost(150, 130, 2).squad(2).hp(240).armor(0.15f).speed(200).weapon(220, 11, 0.35f)
             .bonus(LIGHT, 1.8f).vision(560).radius(11).build(10).factoryTier(2)),
@@ -85,7 +88,7 @@ public enum ShipClass {
             .cost(4000, 4000, 0).rare2(3, 2, 3, 0).build(200).upgrade(3)),
     STELLAR_REFINEMENT(new Spec("Stellar Refinement", "ENDGAME STACKING UPGRADE. Each level: +2% to all mining, harvesting and energy collection. Up to 999 levels; each one costs more (logarithmically). Needs Mothership III and Research Hub III.")
             .cost(2000, 2000, 0).build(60).msTier(3).internal()),
-    FACTORY_TIER_2(new Spec("Station Tier II", "Upgrade this Ship Station: builds 30% faster; unlocks Corsair, Tempest, Aegis and Phantom.")
+    FACTORY_TIER_2(new Spec("Station Tier II", "Upgrade this Ship Station: builds 30% faster; unlocks Corsair, Tempest, Pyre, Aegis and Phantom.")
             .cost(800, 800, 0).rare(1, 1, 0, 0, 0).build(60).upgrade(2)),
     FACTORY_TIER_3(new Spec("Station Tier III", "Upgrade this Ship Station: builds 60% faster than tier I; unlocks Sovereign and Leviathan.")
             .cost(2000, 2000, 0).rare2(2, 0, 1, 0).build(120).upgrade(3)),
@@ -171,7 +174,7 @@ public enum ShipClass {
     }
 
     private static final ShipClass[] MS_BUILD = {HARVESTER, PATROL, DEFENDER, MS_TIER_2, MS_TIER_3, STELLAR_REFINEMENT};
-    private static final ShipClass[] FACTORY_BUILD = {COLONY_SHIP, WISP, LANCER, BULWARK, LONGBOW, HIVE, BARGE, CORSAIR, TEMPEST,
+    private static final ShipClass[] FACTORY_BUILD = {COLONY_SHIP, WISP, LANCER, BULWARK, LONGBOW, HIVE, BARGE, CORSAIR, TEMPEST, PYRE,
             PHANTOM, AEGIS, SOVEREIGN, LEVIATHAN, FACTORY_TIER_2, FACTORY_TIER_3};
     /** Legacy: shipyards from older saves keep working. */
     private static final ShipClass[] YARD_BUILD = {COLONY_SHIP, WISP, LANCER, BULWARK, LONGBOW, HIVE, PHANTOM, AEGIS, BARGE};

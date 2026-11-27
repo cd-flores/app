@@ -411,7 +411,7 @@ public class RivalAI {
         }
         if (p.tier >= 3 && w.rng.nextBoolean() && w.production.enqueue(p, ShipClass.SOVEREIGN) == null) return;
         ShipClass[] pool = {ShipClass.LANCER, ShipClass.LANCER, ShipClass.LANCER, ShipClass.BULWARK, ShipClass.BULWARK,
-                ShipClass.LONGBOW, ShipClass.LONGBOW, ShipClass.HIVE, ShipClass.AEGIS, ShipClass.PHANTOM, ShipClass.CORSAIR, ShipClass.TEMPEST};
+                ShipClass.LONGBOW, ShipClass.LONGBOW, ShipClass.HIVE, ShipClass.AEGIS, ShipClass.PHANTOM, ShipClass.CORSAIR, ShipClass.TEMPEST, ShipClass.PYRE};
         for (int tries = 0; tries < 4; tries++) {
             ShipClass c = pool[w.rng.nextInt(pool.length)];
             if (w.production.enqueue(p, c) == null) return;

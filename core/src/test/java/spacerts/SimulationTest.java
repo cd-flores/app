@@ -457,6 +457,8 @@ class SimulationTest {
     private static Unit[] raidSetup(World w, java.util.List<Unit> lancers) {
         Faction p = w.player;
         Body col = colonizeNearest(w, p);
+        // only the test's own Lancers respond (buffed Lancers are strong enough that any others would cover the raid alone)
+        for (Unit u : w.units) if (u.owner == p && u.cls.isWarship() && u.cls != ShipClass.MOTHERSHIP) u.kill(true);
         for (int i = 0; i < 4; i++) {
             Unit l = w.spawn(ShipClass.LANCER, p, col.x + 1500 + i * 30, col.y);
             lancers.add(l);
@@ -1481,7 +1483,7 @@ class SimulationTest {
         ms.tier = 2;
         assertNull(w.production.enqueue(ms, ShipClass.PATROL));
         assertTrue(ShipClass.PATROL.s.speed > ShipClass.LANCER.s.speed, "faster than infantry");
-        assertEquals(ShipClass.LANCER.s.hp * 2, ShipClass.PATROL.s.hp, 0.01, "twice infantry health");
+        assertEquals(220, ShipClass.PATROL.s.hp, 0.01, "Patrol Ship hull unchanged by the Lancer buff");
         assertTrue(ShipClass.PATROL.s.dps() < ShipClass.LANCER.s.dps(), "less damage");
         Body col = colonizeNearest(w, p);
         Unit pat = w.spawn(ShipClass.PATROL, p, ms.x + 200, ms.y);

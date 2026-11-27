@@ -23,6 +23,10 @@ public class Spec {
     public boolean hiveOnly;
     public boolean piercing, mustStop, cloak, stationary, harvester, colonizer, surveyor, producer, internal, detector;
     public int drones, squad = 1, multi = 1, cap;
+    /** Incendiary weapons: every hit sets the target burning for burnTime seconds at burnDps (armor ignored). */
+    public float burnDps, burnTime;
+    /** Damage multiplier against the Hive's swarm (Drones and Broodlings); 1 = none. */
+    public float antiSwarm = 1f;
     /** Activated skills, each on its own hotkey (see Ability). */
     public Ability[] abilities = {};
     public Tech tech;
@@ -60,6 +64,8 @@ public class Spec {
     public Spec minRange(float v) { minRange = v; return this; }
     public Spec bonus(ArmorType t, float mult) { bonusVs = t; bonusMult = mult; return this; }
     public Spec splash(float v) { splash = v; return this; }
+    public Spec burn(float dps, float seconds) { burnDps = dps; burnTime = seconds; return this; }
+    public Spec antiSwarm(float mult) { antiSwarm = mult; return this; }
     public Spec aura(float v) { aura = v; return this; }
     public Spec heal(float range, float rate) { healRange = range; healRate = rate; return this; }
     public Spec piercing() { piercing = true; return this; }

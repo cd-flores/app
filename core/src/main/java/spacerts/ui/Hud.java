@@ -1306,7 +1306,7 @@ public class Hud {
                         + "  STATIONS (Ship Stations, the Research Hub, Repair Stations) can move, at half the Mothership's speed.\n"
                         + "  V (or the button on the Mothership's panel) RALLIES them: they line up in hex rings around the Mothership and move as fast as it does.\n\n"
                         + "  TIERS (select it, then U or its upgrade button): Mothership I-III adds hull, guns and buildings. Ship Station I-III builds\n"
-                        + "  30% faster per tier; tier II unlocks Corsair, Tempest, Aegis and Phantom; tier III unlocks Sovereign and Leviathan.\n"
+                        + "  30% faster per tier; tier II unlocks Corsair, Tempest, Pyre, Aegis and Phantom; tier III unlocks Sovereign and Leviathan.\n"
                         + "  WARSHIP PRICES grow with how many of that type you have: 10 in service = +84%, 50 = +138%. Mix your fleet."});
         pages.add(new String[]{"Warships and skills",
                 "  Lancer beats Longbow, Longbow beats Bulwark, Bulwark beats Lancer.\n"

@@ -85,6 +85,9 @@ public final class SaveManager {
         public boolean giant;
         /** Fortified worlds: when each faction last attacked the natives here (null: never). */
         public float[] provoked;
+        /** Colony buoys: rings launched so far and the time toward the next one. */
+        public int buoyRings;
+        public float buoyTimer;
     }
 
     public static class UnitData {
@@ -95,7 +98,7 @@ public final class SaveManager {
         public String[] queue;
         /** What was paid for each queued item: energy, metal, energy, metal, ... (older saves: missing = base price). */
         public int[] queuePaid;
-        public float x, y, hp, shield, angle, tx, ty, anchorX, anchorY, cargo, work, progress, rallyX, rallyY, radius, abilityCd, ghostTimer;
+        public float x, y, hp, shield, angle, tx, ty, anchorX, anchorY, cargo, work, progress, rallyX, rallyY, radius, abilityCd, ghostTimer, burnTime, burnDps;
         /** Cooldown left for each ability (by ordinal); old saves only have abilityCd. */
         public float[] abilityCds;
         /** Targeting mode name (older saves: nearest). */
@@ -227,6 +230,8 @@ public final class SaveManager {
             bd.turretPoints = b.turretPoints;
             bd.shieldPoints = b.shieldPoints;
             bd.provoked = b.provoked;
+            bd.buoyRings = b.buoyRings;
+            bd.buoyTimer = b.buoyTimer;
             bd.cr = b.color.r;
             bd.cg = b.color.g;
             bd.cb = b.color.b;
@@ -266,6 +271,8 @@ public final class SaveManager {
             ud.work = u.work;
             ud.abilityCds = u.abilityCds.clone();
             ud.ghostTimer = u.ghostTimer;
+            ud.burnTime = u.burnTime;
+            ud.burnDps = u.burnDps;
             ud.targeting = u.targeting.name();
             ud.leaving = u.leaving;
             ud.retreating = u.retreating;
@@ -414,6 +421,8 @@ public final class SaveManager {
             b.turretPoints = bd.turretPoints + bd.defenseLevel;
             b.shieldPoints = bd.shieldPoints;
             b.provoked = bd.provoked;
+            b.buoyRings = bd.buoyRings;
+            b.buoyTimer = bd.buoyTimer;
             b.color.set(bd.cr, bd.cg, bd.cb, 1f);
             b.side = bd.side;
             b.lootNeutron = bd.lootNeutron;
@@ -464,6 +473,8 @@ public final class SaveManager {
             if (ud.abilityCds != null) System.arraycopy(ud.abilityCds, 0, u.abilityCds, 0, Math.min(ud.abilityCds.length, u.abilityCds.length));
             else if (u.s.abilities.length > 0) u.abilityCds[u.s.abilities[0].ordinal()] = ud.abilityCd; // older save
             u.ghostTimer = ud.ghostTimer;
+            u.burnTime = ud.burnTime;
+            u.burnDps = ud.burnDps;
             if (ud.targeting != null)
                 try { u.targeting = spacerts.units.Targeting.valueOf(ud.targeting); } catch (IllegalArgumentException ignored) {}
             u.leaving = ud.leaving;

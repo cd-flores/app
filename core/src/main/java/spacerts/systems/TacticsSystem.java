@@ -102,7 +102,7 @@ public class TacticsSystem {
     public static Role role(ShipClass c) {
         switch (c) {
             case BULWARK: case AEGIS: case SOVEREIGN: case LEVIATHAN: return Role.TANK;
-            case LANCER: case CORSAIR: case PATROL: case PATROL_SKIFF: case BROODLING: case WISP: return Role.INFANTRY;
+            case LANCER: case CORSAIR: case PYRE: case PATROL: case PATROL_SKIFF: case BROODLING: case WISP: return Role.INFANTRY;
             case HIVE: case HALCYON: return Role.SUPPORT;
             case LONGBOW: case PHANTOM: case TEMPEST: return Role.SNIPER;
             default: return null;

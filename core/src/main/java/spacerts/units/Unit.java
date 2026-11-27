@@ -35,6 +35,8 @@ public class Unit {
     public final float[] abilityCds = new float[Ability.values().length];
     /** Ghost Drive (scouts): cloaked, faster and unable to fire while > 0. */
     public float ghostTimer;
+    /** Burning (Pyre fire): seconds left and damage per second. */
+    public float burnTime, burnDps;
     /** Evasive Dash (snipers): sliding backward at (dashVx, dashVy) while > 0. */
     public float dashTimer, dashVx, dashVy;
     public float tauntTimer, forcedTimer;

@@ -42,6 +42,12 @@ public class UnitBehavior {
         if (u.cooldown > 0) u.cooldown -= dt;
         for (int i = 0; i < u.abilityCds.length; i++) if (u.abilityCds[i] > 0) u.abilityCds[i] -= dt;
         if (u.ghostTimer > 0) u.ghostTimer -= dt;
+        if (u.burnTime > 0) { // Pyre fire: armor doesn't help
+            u.burnTime -= dt;
+            w.combat.applyDamage(u, u.burnDps * dt, true, null);
+            if (u.burnTime <= 0) u.burnDps = 0;
+            if (u.dead) return;
+        }
         if (u.slowMultTimer > 0 && (u.slowMultTimer -= dt) <= 0) u.slowMult = 1f; // Crippling Line wears off
         if (u.martyrTarget != null) { // Martyr Charge: nothing else matters now
             w.tactics.martyrUpdate(u, dt);

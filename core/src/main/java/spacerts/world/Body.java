@@ -53,6 +53,23 @@ public class Body {
 
     public int defensePoints() { return turretPoints + shieldPoints; }
 
+    /**
+     * Colony buoys: every BUOY_PERIOD seconds a colonized planet launches a ring of BUOYS_PER_RING vision beacons,
+     * ring k at radius + BUOY_SPACING * k, up to BUOY_MAX_RINGS. They are not units: nothing can target them.
+     */
+    public static final float BUOY_PERIOD = 300f, BUOY_SPACING = 250f, BUOY_VISION = 300f;
+    public static final int BUOYS_PER_RING = 5, BUOY_MAX_RINGS = 5;
+    public int buoyRings;
+    public float buoyTimer;
+
+    /** Position of buoy i (0-4) in ring k (1-based): out[0] = x, out[1] = y. Each ring is turned a little. */
+    public void buoy(int k, int i, float[] out) {
+        double a = Math.PI * 2 * i / BUOYS_PER_RING + k * 0.63 - Math.PI / 2;
+        float d = radius + BUOY_SPACING * k;
+        out[0] = x + (float) Math.cos(a) * d;
+        out[1] = y + (float) Math.sin(a) * d;
+    }
+
     /** Fortified worlds hold fire until attacked: natives only fight factions that hit them this recently (s). */
     public static final float PROVOKE_MEMORY = 30f;
     /** Game time each faction (by id) last hit this planet's natives; null until someone does. */

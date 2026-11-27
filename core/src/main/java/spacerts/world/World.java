@@ -249,6 +249,8 @@ public class World {
         }
     }
 
+    private final float[] buoyTmp = new float[2];
+
     public void updateVision() {
         for (Faction f : factions) {
             f.detectors.clear();
@@ -277,6 +279,24 @@ public class World {
             if (u.cls == ShipClass.COLONY || u.cls == ShipClass.MOTHERSHIP || u.cls == ShipClass.FACTORY || u.cls == ShipClass.SHIPYARD
                     || u.cls == ShipClass.REFINERY)
                 f.docks.add(u);
+        }
+        float[] bp = buoyTmp;
+        for (int i = 0, n = factions.size(); i < n; i++) { // colony buoys: vision beacons around each colony
+            Faction f = factions.get(i);
+            if (f.vision == null) continue;
+            for (int c = 0, nc = f.colonies.size(); c < nc; c++) {
+                Body b = f.colonies.get(c).home;
+                for (int k = 1; k <= b.buoyRings; k++)
+                    for (int j = 0; j < Body.BUOYS_PER_RING; j++) {
+                        b.buoy(k, j, bp);
+                        f.vision.reveal(bp[0], bp[1], Body.BUOY_VISION);
+                        if (teams && f.team != 0)
+                            for (int a = 0; a < n; a++) {
+                                Faction al = factions.get(a);
+                                if (al != f && al.vision != null && al.team == f.team) al.vision.reveal(bp[0], bp[1], Body.BUOY_VISION);
+                            }
+                    }
+            }
         }
         for (int i = 0, n = factions.size(); i < n; i++) { // ISeeDeadPeople cheat: no fog
             Faction f = factions.get(i);

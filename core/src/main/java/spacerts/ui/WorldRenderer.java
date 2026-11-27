@@ -113,6 +113,21 @@ public class WorldRenderer {
             if (b.dead || !inView(b.x, b.y, b.radius * 2.5f) || !vg.isExplored(b.x, b.y)) continue;
             drawBody(sr, w, b);
         }
+        // colony buoys: small diamonds in the owner's colour, where the player can see them
+        for (Body b : w.bodies) {
+            if (b.buoyRings <= 0 || !b.colonized()) continue;
+            Color bc = b.colony.owner.color;
+            float pulse = 0.65f + 0.35f * (float) Math.sin(w.time * 3 + b.x);
+            for (int k = 1; k <= b.buoyRings; k++)
+                for (int j = 0; j < Body.BUOYS_PER_RING; j++) {
+                    b.buoy(k, j, buoyPos);
+                    if (!inView(buoyPos[0], buoyPos[1], 20) || !vg.isVisible(buoyPos[0], buoyPos[1])) continue;
+                    sr.setColor(bc.r, bc.g, bc.b, 0.9f * pulse);
+                    sr.circle(buoyPos[0], buoyPos[1], 7f, 4);
+                    sr.setColor(1f, 1f, 1f, 0.8f * pulse);
+                    sr.circle(buoyPos[0], buoyPos[1], 2.5f, 4);
+                }
+        }
         // harvest beams
         for (Unit u : w.units) {
             if (u.dead || !u.s.harvester || u.order != Order.HARVEST || u.harvestState != 1 || u.body == null) continue;
@@ -165,6 +180,14 @@ public class WorldRenderer {
             if (u.dead || !inView(u.x, u.y, u.radius + 20)) continue;
             if (!w.canSee(w.player, u)) continue;
             drawUnit(sr, w, u);
+            if (u.burnTime > 0) { // Pyre fire: flickering embers on the hull
+                for (int i = 0; i < 3; i++) {
+                    float a = u.id * 2.1f + i * 2.09f + w.time * 5f;
+                    float fr = u.radius * (0.35f + 0.15f * (float) Math.sin(w.time * 17 + i * 3));
+                    sr.setColor(1f, 0.45f + 0.25f * i / 2f, 0.1f, 0.75f);
+                    sr.circle(u.x + (float) Math.cos(a) * u.radius * 0.5f, u.y + (float) Math.sin(a) * u.radius * 0.5f, fr, 6);
+                }
+            }
         }
         // rally flag
         if (w.player.hasFlag) drawFlag(sr, w.player.flagX, w.player.flagY, w.player.color, 1f);
@@ -535,6 +558,8 @@ public class WorldRenderer {
         tri(sr, ax, ay, cx, cy, dx, dy);
     }
 
+    private final float[] buoyPos = new float[2];
+
     private void drawUnit(ShapeRenderer sr, World w, Unit u) {
         Color oc = u.owner.color;
         float alpha = u.cloaked(w.time) ? 0.35f : 1f; // cloaked ships (Phantom, Ghost Drive) are drawn faint
@@ -869,6 +894,18 @@ public class WorldRenderer {
                 sr.setColor(1f, 0.85f, 0.5f, alpha);
                 tri(sr, r * 0.7f, 0, r * 0.1f, r * 0.2f, r * 0.1f, -r * 0.2f);
                 break;
+            case PYRE: { // stubby armoured hull with a glowing flamer nozzle up front
+                sr.setColor(oc.r * dark, oc.g * dark, oc.b * dark, alpha);
+                quad(sr, r * 0.8f, r * 0.55f, -r, r * 0.8f, -r, -r * 0.8f, r * 0.8f, -r * 0.55f);
+                sr.setColor(oc.r, oc.g, oc.b, alpha);
+                quad(sr, r * 0.4f, r * 0.4f, -r * 0.7f, r * 0.55f, -r * 0.7f, -r * 0.55f, r * 0.4f, -r * 0.4f);
+                float flick = 0.8f + 0.2f * (float) Math.sin(w.time * 14 + u.id);
+                sr.setColor(1f, 0.55f, 0.15f, alpha);
+                tri(sr, r * 1.35f * flick, 0, r * 0.75f, r * 0.3f, r * 0.75f, -r * 0.3f);
+                sr.setColor(1f, 0.9f, 0.5f, alpha);
+                sr.circle(ux + uc * r * 0.85f, uy + us * r * 0.85f, r * 0.16f, 8);
+                break;
+            }
             case TEMPEST: // cruiser hull with two missile pods
                 sr.setColor(oc.r * dark, oc.g * dark, oc.b * dark, alpha);
                 quad(sr, r * 1.1f, r * 0.3f, -r, r * 0.45f, -r, -r * 0.45f, r * 1.1f, -r * 0.3f);

@@ -76,6 +76,7 @@ public class CombatSystem {
     public void hit(Unit src, Unit t, float mult) {
         float dmg = src.damage() * mult;
         if (src.s.bonusVs != null && t.s.type == src.s.bonusVs) dmg *= src.s.bonusMult;
+        if (src.s.antiSwarm != 1f && (t.cls == ShipClass.DRONE || t.cls == ShipClass.BROODLING)) dmg *= src.s.antiSwarm; // Pyre vs the Hive's swarm
         spacerts.units.Tactic tac = src.formation != 0 ? w.tactics.engagedTactic(src) : null;
         TacticsSystem.Role role = TacticsSystem.role(src.cls);
         // Focus: snipers hit tanks and Hives 50% harder
@@ -91,6 +92,13 @@ public class CombatSystem {
             }
         }
         applyDamage(t, dmg, src.s.piercing, src);
+        if (src.s.burnTime > 0 && !t.dead && !t.s.stationary) ignite(t, src.s.burnDps * src.owner.dmgMult(), src.s.burnTime);
+    }
+
+    /** Sets t burning: the stronger fire and the longer time win. */
+    public static void ignite(Unit t, float dps, float seconds) {
+        t.burnDps = Math.max(t.burnDps, dps);
+        t.burnTime = Math.max(t.burnTime, seconds);
     }
 
     public void applyDamage(Unit t, float dmg, boolean piercing, Unit src) {

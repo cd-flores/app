@@ -33,7 +33,7 @@ Requires a JDK (17 or newer; developed on 25). The first build downloads Gradle 
   They pay for tier III upgrades, the tier III ships, the Ion Cannon, the Ascension Gate and three late techs: Neutronium Plating (+20% hull), Hyperdrive Lattice (+10% speed, instant gate recharge) and Dark Matter Reactors (+30% build speed).
 - **Tier upgrades**: select the Mothership or a Ship Station and press **U** (or use its upgrade button).
   - **Mothership II / III** (1500/1500 + rare items, then 4000/4000 + scarce finds): +30% hull and shield and an extra gun per tier, and they unlock more Harvester buildings.
-  - **Ship Station II / III**, per station: each tier builds **30% faster**. Tier II unlocks Corsair, Tempest, Aegis and Phantom; tier III unlocks Sovereign and Leviathan.
+  - **Ship Station II / III**, per station: each tier builds **30% faster**. Tier II unlocks Corsair, Tempest, Pyre, Aegis and Phantom; tier III unlocks Sovereign and Leviathan.
   - **Research Hub**: the Hub Expansion II/III techs are the lab upgrades. Each tier researches **25% faster**.
   - **Stellar Refinement** (endgame, at the Mothership; needs Mothership III and Research Hub III): a stacking upgrade, **+2% to all mining, harvesting and energy collection per level, up to 999 levels**. Each level takes 60 s and costs **2000E / 2000M × (1 + ln(1 + level))**: level 10 costs 3.4x, level 100 costs 5.6x, and level 999 costs 7.9x. Only one level can be queued at a time.
 - **Harvesters also build** (select one, then press a number key):
@@ -64,13 +64,14 @@ Requires a JDK (17 or newer; developed on 25). The first build downloads Gradle 
   - **Habitable worlds** (undefended): send a Colony Ship for +30 housing.
   - **Fortified worlds** (defended): native turrets and guards respawn while the turrets stand. **They hold fire until attacked**, so fleets can fly past; once an empire hits them, they fight that empire until 30 s after its last hit. Destroy the turrets, then colonize for +65 housing.
   - Every new colony comes with a free Harvester that starts working straight away.
+  - **Buoys**: every 5 minutes a colony launches a ring of 5 vision buoys, each ring 250 further out (250, 500 ... 1250 from the planet), up to 5 rings. Buoys can't be targeted. They light up the area around them for the colony's owner and allies, and vanish if the colony is lost.
 - **Travel boosts** (the highest one applies; they don't stack):
   - 2x speed when heading to one of your own colonies.
   - 1.75x when heading to any other planet.
   - 1.75x while charging into an attack, until the ship is in weapon range.
 - **Long fights**: every ship, structure, colony and turret has 5x the HP and shields (weapons are unchanged), so battles are drawn-out fights where you wear the enemy down. Shields recover at **half speed**, but **colonies carry 5x the shield** (and recharge 5x faster to match), so conquered planets are real fortresses.
 - **Housing per ship**: every ship costs 1 more housing than before except infantry (Lancers stay at 1). For example, Harvester 2, Bulwark 6, Longbow 3, Phantom 4, Leviathan 21.
-- **Auto-retreat** (per ship, toggle with **R**): a warship below 25% hull pulls back to the nearest Repair Station or base (Ship Station or Mothership), repairs to 90%, then attack-moves back to where it left the fight. This works for rivals too.
+- **Auto-retreat** (per ship, toggle with **R**): a warship below 25% hull pulls back to the nearest Repair Station or base (Ship Station or Mothership), repairs to 90%, then attack-moves back to where it left the fight. Bots don't auto-retreat: their ships fight to the end.
 - **Base repair**: any ship near your Ship Station or Mothership that has been out of combat for 6 s repairs 2% of its hull per second. **Colonies no longer repair ships.**
 - **Repairs cost metal**: every repair (base repair, Repair Stations, Mothership self-repair) is paid automatically by the ship's owner. A full repair from zero hull costs **half the ship's metal price**; the Mothership is priced as if it cost 1000 metal. With no metal, repairs stop. Colonies, turrets and fixed structures still repair for free. The upkeep tooltip in the top bar shows your current repair spending.
 - **Upkeep** (Warcraft 3 style): a big army costs energy every second. Each ship counts its housing and each station counts **4**:
@@ -101,11 +102,12 @@ Requires a JDK (17 or newer; developed on 25). The first build downloads Gradle 
   | Ship | Role | Notes |
   |---|---|---|
   | Wisp | Scout | Q: Sensor Ping; E: Ghost Drive (cloaked and 60% faster for 6 s, cannot fire; 30 s cooldown); detects cloaked ships |
-  | Lancer | Infantry | Squad of 3 |
+  | Lancer | Infantry | Squad of 3; 330 hull and 14 damage per ship |
   | Bulwark | Tank | T: Taunt; as fast as Lancers (165) |
   | Longbow | Sniper | Range 850; as fast as Lancers (165); reload 5.5 s; revealed to its victims for 4 s each time it fires; Z: Evasive Dash (leaps 400 away from the nearest threat, or straight back; 15 s cooldown) |
   | Mining Barge | Hauler | Not a warship; 150 cargo, 1.5x mining speed, salvages wrecks; 4 housing |
-  | Patrol Ship | Patrol | Mothership II (built at the Mothership); 1 housing; flies a circuit of every colony and back to the Mothership on its own; faster than infantry with twice its health but lighter guns; splits into 2 Patrol Skiffs when destroyed |
+  | Patrol Ship | Patrol | Mothership II (built at the Mothership); 1 housing; flies a circuit of every colony and back to the Mothership on its own; faster than infantry but with lighter guns; splits into 2 Patrol Skiffs when destroyed |
+  | Pyre | Incendiary frigate | Station II; 450E / 450M, 7 housing. Short-range flamer (200) with splash (90); every hit sets ships burning for 4 s (10 damage/s, armor doesn't help); **4x damage to Hive drones and Broodlings** |
   | Hive | Carrier | Needs research; with **Brood Swarm** research (Military, tier 2, after Carrier Doctrine) a destroyed Hive releases **5 Broodlings**, fast fighters that keep fighting |
   | Corsair | Strike frigate pair | Station II; very fast, bonus vs light hulls |
   | Tempest | Missile cruiser | Station II; range 700, big splash: breaks up swarms |
