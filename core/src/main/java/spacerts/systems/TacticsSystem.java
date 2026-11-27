@@ -27,6 +27,8 @@ public class TacticsSystem {
 
     /** Formations finish forming after this long even if a ship is stuck. */
     public static final float FORM_TIMEOUT = 10f;
+    /** The formation anchor advances at this share of Lancer speed; the ships themselves fly at full Lancer speed. */
+    public static final float MARCH_PACE = 0.8f;
     /** Engage when a visible enemy is this close to the formation. */
     public static final float ENGAGE_RANGE = 700f;
     /** Pincer wings close in once a tank drops below this share of its hull. */
@@ -52,6 +54,9 @@ public class TacticsSystem {
         /** Flank: 0 front, 1 rear-left, 2 rear-right. Pincer: 0, 1 left wing, 2 right wing. */
         public int group;
         public int waypoint;
+        /** Bulldozer infantry: the tank this ship guards, and its spot on the ring around it (angle, radius). */
+        public Member guard;
+        public float ringA, ringR;
 
         Member(Unit u, Role role) {
             this.u = u;
@@ -122,6 +127,18 @@ public class TacticsSystem {
     public Tactic engagedTactic(Unit u) {
         Formation fm = formationOf(u);
         return fm != null && fm.state == State.ENGAGED ? fm.tactic : null;
+    }
+
+    /** Speed of a ship in a formed-up formation (marching or fighting): the owner's Lancer speed; -1 otherwise. */
+    public float formationSpeed(Unit u) {
+        if (u.formation == 0) return -1f;
+        Formation fm = byId.get(u.formation);
+        if (fm == null || fm.state == State.FORMING) return -1f;
+        return lancerSpeed(fm.f);
+    }
+
+    public static float lancerSpeed(Faction f) {
+        return ShipClass.LANCER.s.speed * f.speedMult();
     }
 
     /** The tactic u's formation uses (any state), or null. */
@@ -195,23 +212,54 @@ public class TacticsSystem {
         return Math.max(0, ms.size() - 1) / 2f * s;
     }
 
+    /** Ring radius for a tank guarded by n infantry ships spaced s apart. */
+    private static float guardRing(Member tank, int n, float s) {
+        return Math.max(tank.u.radius + 70f, n * s / (float) (2 * Math.PI));
+    }
+
+    /** Bulldozer: deals the infantry out to the tanks in turn, then spaces each group evenly around its tank. */
+    private static void assignGuards(List<Member> tanks, List<Member> inf, float si) {
+        int nt = tanks.size();
+        int[] count = new int[nt];
+        for (int i = 0; i < inf.size(); i++) count[i % nt]++;
+        int[] seen = new int[nt];
+        for (int i = 0; i < inf.size(); i++) {
+            int k = i % nt;
+            Member m = inf.get(i), t = tanks.get(k);
+            m.guard = t;
+            m.ringR = guardRing(t, count[k], si);
+            m.ringA = (float) (Math.PI * 2 * seen[k]++ / Math.max(1, count[k]));
+            m.sx = t.sx + (float) Math.cos(m.ringA) * m.ringR;
+            m.sy = t.sy + (float) Math.sin(m.ringA) * m.ringR;
+        }
+    }
+
     private void layout(Formation fm) {
         List<Member> tanks = of(fm, Role.TANK), inf = of(fm, Role.INFANTRY), sup = of(fm, Role.SUPPORT), snip = of(fm, Role.SNIPER);
         float st = spacing(tanks), si = spacing(inf), ss = spacing(sup), sn = spacing(snip);
         switch (fm.tactic) {
             case BULLDOZER: {
-                // tanks in a block, infantry in a ring around it, support behind the ring, snipers at the back
-                float depth = block(tanks, 0, 0, st, 3);
-                float cx = -depth / 2f;
-                float hw = tanks.isEmpty() ? 0 : (Math.min(3, tanks.size()) - 1) / 2f * st;
-                float br = (float) Math.hypot(hw, depth / 2f) + (tanks.isEmpty() ? 0 : st / 2.6f);
-                float ring = Math.max(br + 70f, inf.size() * si / (float) (2 * Math.PI));
-                for (int i = 0; i < inf.size(); i++) {
-                    double a = Math.PI * 2 * i / Math.max(1, inf.size());
-                    inf.get(i).sx = cx + (float) Math.cos(a) * ring;
-                    inf.get(i).sy = (float) Math.sin(a) * ring;
+                // tanks in a block; the infantry is split evenly across the tanks and each group rings its own tank;
+                // support behind, snipers at the back
+                float back;
+                if (tanks.isEmpty()) { // no tanks: one ring, as before
+                    float ring = Math.max(70f, inf.size() * si / (float) (2 * Math.PI));
+                    for (int i = 0; i < inf.size(); i++) {
+                        double a = Math.PI * 2 * i / Math.max(1, inf.size());
+                        inf.get(i).sx = (float) Math.cos(a) * ring;
+                        inf.get(i).sy = (float) Math.sin(a) * ring;
+                    }
+                    back = -ring;
+                } else {
+                    float maxRing = 0;
+                    for (Member t : tanks) maxRing = Math.max(maxRing, guardRing(t, (inf.size() + tanks.size() - 1) / tanks.size(), si));
+                    float gap = Math.max(st, 2 * maxRing + si); // room for each tank's ring
+                    block(tanks, 0, 0, gap, 3);
+                    assignGuards(tanks, inf, si);
+                    float minX = 0;
+                    for (Member t : tanks) minX = Math.min(minX, t.sx - maxRing);
+                    back = minX;
                 }
-                float back = cx - (inf.isEmpty() ? br : ring);
                 line(sup, back - ss, 0, ss);
                 line(snip, back - ss - Math.max(sn, 120f), 0, sn);
                 break;
@@ -314,15 +362,12 @@ public class TacticsSystem {
     }
 
     private void marching(Formation fm, float dt) {
-        float speed = Float.MAX_VALUE;
+        float speed = lancerSpeed(fm.f); // once formed, every ship moves at Lancer speed
         boolean lagging = false;
-        for (Member m : fm.members) {
-            speed = Math.min(speed, m.u.speed());
-            if (m.u.dist(fm.slotX(m), fm.slotY(m)) > 250f) lagging = true;
-        }
+        for (Member m : fm.members) if (m.u.dist(fm.slotX(m), fm.slotY(m)) > 250f) lagging = true;
         float dx = fm.tx - fm.ax, dy = fm.ty - fm.ay, d = (float) Math.hypot(dx, dy);
         if (!lagging && d > 1f) { // the anchor waits for stragglers so the shape holds
-            float step = Math.min(d, speed * 0.9f * dt);
+            float step = Math.min(d, speed * MARCH_PACE * dt); // a little under Lancer speed, so every ship can hold its slot
             fm.ax += dx / d * step;
             fm.ay += dy / d * step;
         }
@@ -393,7 +438,13 @@ public class TacticsSystem {
                     break;
                 case INFANTRY: {
                     float x = fm.slotX(m), y = fm.slotY(m);
-                    if (u.dist(x, y) > 250f) moveTo(u, x, y); // keep the ring around the tanks
+                    if (m.guard != null && (m.guard.u.dead || m.guard.u.formation != fm.id)) m.guard = nearestTank(fm, u);
+                    if (m.guard != null) { // its spot on the ring around its own tank (in the formation's frame)
+                        float ox = (float) Math.cos(m.ringA) * m.ringR, oy = (float) Math.sin(m.ringA) * m.ringR;
+                        x = m.guard.u.x + fm.hx * ox - fm.hy * oy;
+                        y = m.guard.u.y + fm.hy * ox + fm.hx * oy;
+                    }
+                    if (u.dist(x, y) > 120f) moveTo(u, x, y); // keep the ring around its tank
                     else attackMove(u, ec[0], ec[1]);
                     break;
                 }
@@ -408,6 +459,14 @@ public class TacticsSystem {
                     break;
             }
         }
+    }
+
+    /** The living tank in fm closest to u (its new charge when its own tank is gone), or null. */
+    private static Member nearestTank(Formation fm, Unit u) {
+        Member best = null;
+        for (Member t : fm.members)
+            if (t.role == Role.TANK && !t.u.dead && (best == null || t.u.dist(u) < best.u.dist(u))) best = t;
+        return best;
     }
 
     private void pincer(Formation fm, float[] ec, float[] tc, boolean pick) {

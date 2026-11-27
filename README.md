@@ -13,7 +13,7 @@ Requires a JDK (17 or newer; developed on 25). The first build downloads Gradle 
 
 ## The game
 
-- **Mothership**: builds Harvesters. If it is destroyed, you lose.
+- **Mothership**: 12,000 hull. Builds Harvesters. If it is destroyed, you lose. At tier II it gains **Warp Jump** (L): jump up to 1000 to a point you click, then fly at scout speed for 20 s. 20-minute cooldown.
 - **Economy**: Harvesters gather **energy** from stars and **metal** from asteroids, barren planets and wrecks. **Stars hold a massive but finite energy deposit (300,000–600,000)**: they shrink as harvesters and Solar Collectors drain them and burn out when empty. Asteroids run out, and new fields drift in over time. Every colony also trickles in energy and metal on its own, much more slowly than harvesting.
 - **Richer asteroids**: every asteroid holds 3x the metal (1,500–3,600 each).
 - **Giant asteroids** hold **150,000–300,000 metal** each: huge, but they do run out. They have craters and glinting ore veins and are named on the map. Classic maps have **four, one near the middle of each edge**, and about a third of the Hive's Asteroid Belts start with one.
@@ -32,7 +32,7 @@ Requires a JDK (17 or newer; developed on 25). The first build downloads Gradle 
 
   They pay for tier III upgrades, the tier III ships, the Ion Cannon, the Ascension Gate and three late techs: Neutronium Plating (+20% hull), Hyperdrive Lattice (+10% speed, instant gate recharge) and Dark Matter Reactors (+30% build speed).
 - **Tier upgrades**: select the Mothership or a Ship Station and press **U** (or use its upgrade button).
-  - **Mothership II / III** (1500/1500 + rare items, then 4000/4000 + scarce finds): +30% hull and shield and an extra gun per tier, and they unlock more Harvester buildings.
+  - **Mothership II / III** (1500/1500 + rare items, then 4000/4000 + scarce finds): +30% hull and shield and an extra gun per tier, and they unlock more Harvester buildings. **Tier II also unlocks Warp Jump, a second Research Hub (the two labs research different techs at the same time) and 2 more Ship Stations (4 in all).**
   - **Ship Station II / III**, per station: each tier builds **30% faster**. Tier II unlocks Corsair, Tempest, Pyre, Aegis and Phantom; tier III unlocks Sovereign and Leviathan.
   - **Research Hub**: the Hub Expansion II/III techs are the lab upgrades. Each tier researches **25% faster**.
   - **Stellar Refinement** (endgame, at the Mothership; needs Mothership III and Research Hub III): a stacking upgrade, **+2% to all mining, harvesting and energy collection per level, up to 999 levels**. Each level takes 60 s and costs **2000E / 2000M × (1 + ln(1 + level))**: level 10 costs 3.4x, level 100 costs 5.6x, and level 999 costs 7.9x. Only one level can be queued at a time.
@@ -119,6 +119,7 @@ Requires a JDK (17 or newer; developed on 25). The first build downloads Gradle 
 
 - **Main menu**: Campaign · Multiplayer · Load Game · Load Autosave · Quit. Use the mouse, or the arrow keys with Enter. Left / Right change a setting and Esc goes back.
 - **Multiplayer** (classic galaxy, up to 4 empires): host a game and fill the four seats with LAN players, bots or nobody. Native garrisons and pirate raids that grow forever join every game.
+  - **Loading:** after Start, every machine shows a loading screen while it builds the galaxy and warms up, then waits until every player is ready, so the game starts smoothly for everyone at once. Anyone still loading after 60 s is dropped and a bot takes over their empire.
   - **Joining:** other players open **Multiplayer → Join LAN Game**. Games on the network appear in the list on their own, or type the host's **room code**: the lobby shows it in big letters (for example `K7Q-4MXV`). The code is the host's network address in a short, typo-checked form, so it works on the same network, or over a shared VPN such as Radmin, ZeroTier or Hamachi (the lobby lists a code for each network). The host's IP address still works too. The game uses TCP port 47778 and UDP port 47777 for discovery.
   - **To play alone against bots,** host, add bots and start. Nobody needs to join, and the game runs offline with saves enabled.
   - **Teams:** each seat picks No team or Team 1-4. Allies share vision, never shoot each other, and win together. **The match ends** when every enemy empire is eliminated (its Mothership destroyed): the game freezes on a VICTORY screen. Press Enter for the main menu, or C to keep playing (single player). Players choose their own team and color; the host sets the bots'.
@@ -179,8 +180,8 @@ Requires a JDK (17 or newer; developed on 25). The first build downloads Gradle 
 | 1-9, 0, -, = | Build from the selected Mothership, Ship Station, Hub or Harvester |
 | Shift + click while placing | Place more structures with the other selected harvesters |
 | H / F2 / B / I | Select Mothership / cycle Ship Stations / Research Hub / idle harvesters |
-| Ctrl+A | Select all warships |
-| Q / E / T / Z / N / O | Skills, each on its own key: Sensor Ping, Ghost Drive, Taunt, Evasive Dash, Nova Cannon, Overcharge (or click the skill buttons in the bottom panel) |
+| Ctrl+A | Select all warships (not Patrol Ships, which fly their own circuit) |
+| Q / E / T / Z / N / O / L | Skills, each on its own key: Sensor Ping, Ghost Drive, Taunt, Evasive Dash, Nova Cannon, Overcharge, Warp Jump (then click where to jump) (or click the skill buttons in the bottom panel) |
 | X | Stop |
 | Delete | Destroy the selected ships / structures for 25% of their price back (with only the Mothership selected: Surrender, after an "Are you sure?" popup) |
 | / (Shift+/ for team) | Chat: type, Enter sends, Esc cancels; start with `/t ` to send to your team only. Works in LAN games and while eliminated |
@@ -200,7 +201,7 @@ Build a **Command Center** with a Harvester (key **6**, one per empire). It's a 
 
 Press **Y** (or the **Tactic** button on top of the bottom bar) to switch tactics ON. While ON, an **attack** order (Ctrl+right-click, or right-click an enemy) with the selected ships:
 1. **forms them up** in the tactic's formation,
-2. **marches** them together at the slowest ship's speed,
+2. **marches** them together: once formed, every ship moves at **Lancer speed**,
 3. **fights** with the tactic's behavior once enemies are close or someone is hit.
 
 Only the selected ships take part. Ships the tactic has no place for simply attack-move to the target, and so does everyone without a living Command Center. Giving a ship any other order takes it out of its formation.
@@ -214,7 +215,7 @@ Only the selected ships take part. Ships the tactic has no place for simply atta
 
 | Tactic | Formation | In the fight |
 |---|---|---|
-| **Bulldozer** (400E/400M) | Infantry in a ring around the tank block, support behind, snipers at the back | The blob pushes on; infantry stay around the tanks; **snipers shoot whatever is closest to the tanks** |
+| **Bulldozer** (400E/400M) | The infantry is split evenly across the tanks, and each group circles its own tank; support behind, snipers at the back | The blob pushes on; each group stays around its tank (and moves to the nearest tank if its own dies); **snipers shoot whatever is closest to the tanks** |
 | **Pincer** (600E/600M + 1 Plasma) | Tanks in front, infantry wings to the sides and a little back, support behind the tanks, snipers at the back | Once a tank drops below 85% hull, **the wings close in around the enemy**; **snipers switch between the nearest and the farthest target every 3 shots** |
 | **Flank** (600E/600M + 1 Void) | Tanks + half the infantry + half the snipers in front, a 300 gap, then the other halves | **Hurt tanks Taunt, and again every time it recharges**; the rear half **swings round in two arcs, left and right, to 900 past the tanks** to catch the enemy's snipers |
 | **Focus** (600E/600M + 1 Pyro) | Infantry in front, then tanks, then snipers (support just attack-moves) | **Snipers kill hive drones first, then the biggest hull**, with **+50% damage on tanks and Hives** |

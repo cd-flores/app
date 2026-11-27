@@ -4,7 +4,7 @@ Context for picking this project up on another computer. The README describes th
 
 ## Status
 - Branch: `feature/hive-galaxy` (not merged into `main` yet).
-- Build and tests: `./gradlew :core:test --offline` (142 tests, all passing). Run the game with `./gradlew lwjgl3:run` (or `run.bat`).
+- Build and tests: `./gradlew :core:test --offline` (152 tests, all passing). Run the game with `./gradlew lwjgl3:run` (or `run.bat`).
 - Java 17+, libGDX (LWJGL3 desktop). There is no Python on the original machine, so edits were made by hand or with sed/awk.
 
 ## Ground rules of the codebase
@@ -12,7 +12,7 @@ Context for picking this project up on another computer. The README describes th
   - every player action is a `net/Command`, applied by `net/CommandExecutor`. Never mutate the world directly from input or UI code: go through `GameScreen.issue(cmd)`;
   - simulation code must never branch on `w.player` (the local player) except for cosmetic things: `World.notify` (messages to one faction), rings / effects, local UI;
   - randomness inside the simulation uses `w.rng` (or another seeded stream), never `Math.random`.
-- **When you add a Command type, bump `net/Protocol.VERSION`** (currently **6**), so mismatched builds refuse to connect.
+- **When you add a Command type, bump `net/Protocol.VERSION`** (currently **7**), so mismatched builds refuse to connect.
 - Saves are `save/SaveManager` (libGDX reflection JSON over the `SaveData` / `FactionData` / `UnitData` classes). Add new persistent fields there in both directions. Tactical formations are deliberately not saved.
 - Tests live in `core/src/test/java/spacerts/`. `SimulationTest` is the original suite. Newer ones: `MultiplayerTest` (LAN, bots, teams), `GameplayTest` (stations, Defender, upkeep, skills, destroy, chat), `CheatTest`, `TacticsTest`.
 
@@ -49,6 +49,14 @@ Context for picking this project up on another computer. The README describes th
 13. **Tougher economy structures, match end**: Research Outpost 1750 hull, Solar Collector 4500, Asteroid Miner 5000 (5x). When `World.eliminate` decides a victory it also sets `World.matchOver` and `winner` (saved); `World.update` then returns at once on every machine, and the HUD shows the result (Enter: menu; C: keep playing in single player, which sets `noVictory`). Your own defeat does not freeze the world (other LAN players play on); it keeps the old defeat screen.
 
 14. **Room codes** (`net/RoomCode`, `RoomCodeTest`): the host's IPv4 address plus a 3-bit checksum, as 7 Crockford base-32 characters (`ABC-DEFG`). No server: same network or a shared VPN only. `MenuScreen` shows the code(s) in the lobby (private-network addresses first) and the join box accepts a code or a plain IP (`RoomCode.resolve`). Internet play would need a relay server.
+
+15. **Mothership, labs, formations, loading** (`FeaturesTest`):
+    - Mothership 12000 hull. `Ability.WARP` (L, tier II): `UnitBehavior.useAbility(u, a, x, y)` jumps up to `WARP_REACH` (1000) and sets `Unit.sprintTimer` (20 s at Wisp speed, in `MovementSystem`); 20-minute cooldown. Aimed with `GameInput.aimingWarp`; the point rides on the ABILITY command.
+    - Tier II: `ConstructionSystem.maxStations` (2 -> 4) and `maxHubs` (1 -> 2). Lab 2 is `Faction.hub2` / `researching2` / `researchProgress2`; `ProductionSystem.freeLab` picks the lab, `cancelResearch(f, t)` cancels the right one. Bots fill both labs and build the second hub.
+    - Formations: once past FORMING every member moves at `TacticsSystem.lancerSpeed` (no travel boosts); the anchor advances at `MARCH_PACE` (80%) of it. Bulldozer infantry get a `Member.guard` tank and a ring slot around it.
+    - Ctrl+A uses `GameInput.isArmy` (no Patrol Ships). `NetClient.close()` works while still connecting, and the menu ignores repeat joins (double-click fix).
+    - LAN loading: `GameScreen.renderLoading` draws the game behind a loading screen, warms the simulation on a throwaway world (`warmUp`), then `Lockstep.markReady()`. READY / GO messages (`Protocol` 12 / 13); no turns before GO; the host drops anyone not ready after `READY_TIMEOUT` (60 s). Headless timing showed the simulation and network are cheap at start (galaxy ~60 ms, first game second ~20 ms, LAN lockstep with no waits), so the start-up lag is most likely first-frame rendering on a cold JVM, which now happens behind the loading screen.
+    - Research panel: one column per branch (`Tech.PANEL_BRANCHES`, `Tech.branchOrder`), tiers ascending with follow-ups under their prerequisites; tall branches wrap.
 
 ## Performance (stress test)
 - `./gradlew :core:stressTest --offline` (`StressTest`, tagged `stress`, left out of `test`) times `World.update` with more and more near-unkillable ships and writes `core/build/reports/stress/stress-*.csv`. It asserts only correctness (no NaN), never speed.

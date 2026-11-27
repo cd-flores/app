@@ -17,6 +17,18 @@ public class ConstructionSystem {
 
     /** Most Ship Stations an empire may have (alive plus under construction). */
     public static final int MAX_STATIONS = 2;
+    /** Extra Ship Stations a tier II+ Mothership allows. */
+    public static final int TIER2_STATIONS = 2;
+
+    /** Ship Stations f may have: 2, or 4 with a tier II+ Mothership. */
+    public static int maxStations(Faction f) {
+        return MAX_STATIONS + (f.msTier() >= 2 ? TIER2_STATIONS : 0);
+    }
+
+    /** Research Hubs f may have: 1, or 2 with a tier II+ Mothership. */
+    public static int maxHubs(Faction f) {
+        return f.msTier() >= 2 ? 2 : 1;
+    }
 
     public ConstructionSystem(World w) {
         this.w = w;
@@ -27,10 +39,10 @@ public class ConstructionSystem {
         if (c.s.tech != null && !f.has(c.s.tech) && !f.synergy) return "Requires research";
         if (c.s.hiveOnly && !w.galaxy.hive) return "Only in the Hive galaxy (pirates mode)";
         if (c.s.msTier > f.msTier() && !f.synergy) return "Requires Mothership tier " + ProductionSystem.roman(c.s.msTier);
-        if (c == ShipClass.HUB && ((f.hub != null && !f.hub.dead) || building(f, ShipClass.HUB, null) > 0))
-            return "Only one Research Hub allowed";
-        if (c == ShipClass.FACTORY && w.count(f, ShipClass.FACTORY) + building(f, ShipClass.FACTORY, null) >= MAX_STATIONS)
-            return "At most " + MAX_STATIONS + " Ship Stations";
+        if (c == ShipClass.HUB && f.hubsAlive() + building(f, ShipClass.HUB, null) >= maxHubs(f))
+            return maxHubs(f) > 1 ? "At most 2 Research Hubs" : "Only one Research Hub (a second needs Mothership tier II)";
+        if (c == ShipClass.FACTORY && w.count(f, ShipClass.FACTORY) + building(f, ShipClass.FACTORY, null) >= maxStations(f))
+            return "At most " + maxStations(f) + " Ship Stations" + (maxStations(f) == MAX_STATIONS ? " (" + (MAX_STATIONS + TIER2_STATIONS) + " at Mothership tier II)" : "");
         if (c == ShipClass.COMMAND && (w.count(f, ShipClass.COMMAND) > 0 || building(f, ShipClass.COMMAND, null) > 0))
             return "Only one Command Center";
         if (c == ShipClass.ASCENSION && (w.count(f, ShipClass.ASCENSION) > 0 || building(f, ShipClass.ASCENSION, null) > 0))

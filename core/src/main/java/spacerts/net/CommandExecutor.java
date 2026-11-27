@@ -68,8 +68,8 @@ public final class CommandExecutor {
             case RESEARCH: {
                 Tech t = tech(c.name);
                 if (t == null) break;
-                if (f.researching == t) {
-                    w.production.cancelResearch(f);
+                if (f.researchingNow(t)) { // clicking a tech in either lab cancels it
+                    w.production.cancelResearch(f, t);
                     break;
                 }
                 if (f.has(t)) break;
@@ -79,6 +79,7 @@ public final class CommandExecutor {
             }
             case CANCEL_RESEARCH:
                 if (f.researching != null) w.production.cancelResearch(f);
+                else if (f.researching2 != null) w.production.cancelResearch(f, f.researching2);
                 break;
             case BUILD: build(w, f, c); break;
             case UPGRADE_PLANET: upgradePlanet(w, f, c); break;
@@ -418,7 +419,7 @@ public final class CommandExecutor {
         for (Unit u : own(w, f, c.units)) {
             if (!u.s.has(a)) continue;
             if (a == Ability.PING && used.contains(u.cls)) continue; // one Ping per keypress is enough
-            String err = w.behavior.useAbility(u, a);
+            String err = w.behavior.useAbility(u, a, c.x, c.y);
             if (err == null) {
                 anyOk = true;
                 used.add(u.cls);

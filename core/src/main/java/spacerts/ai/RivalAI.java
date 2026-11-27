@@ -164,13 +164,19 @@ public class RivalAI {
         for (Unit p : producers) if (p.cls == ShipClass.FACTORY) factories++;
         factories += w.construction.building(f, ShipClass.FACTORY, null);
         // first factory right away, more as the empire grows
-        int wantFactories = Math.min(ConstructionSystem.MAX_STATIONS, 1 + colonies.size() / 3 + (w.time > 900 ? 1 : 0));
+        int wantFactories = Math.min(ConstructionSystem.maxStations(f), 1 + colonies.size() / 3 + (w.time > 900 ? 1 : 0));
         if (factories == 0 || (factories < wantFactories && w.time > 420 && f.canAfford(600, 600, NO_RARE))) {
             Unit anchor = factories == 0 || colonies.isEmpty() ? ms : colonies.get(w.rng.nextInt(colonies.size()));
             build(ShipClass.FACTORY, anchor, null);
             return;
         }
         if (w.time > 200 && (f.hub == null || f.hub.dead) && w.construction.building(f, ShipClass.HUB, null) == 0) {
+            build(ShipClass.HUB, ms, null);
+            return;
+        }
+        // a second lab once the Mothership reaches tier II
+        if (ms.tier >= 2 && f.hubsAlive() == 1 && f.canAfford(1000, 1000, NO_RARE)
+                && w.construction.baseBlocker(f, ShipClass.HUB) == null) {
             build(ShipClass.HUB, ms, null);
             return;
         }
@@ -288,7 +294,7 @@ public class RivalAI {
     }
 
     private void research() {
-        if (f.researching != null || f.hub == null || f.hub.dead) return;
+        if (spacerts.systems.ProductionSystem.freeLab(f) == 0) return; // both labs busy (or none standing)
         for (Tech t : RESEARCH_ORDER) {
             if (w.production.researchBlocker(f, t) != null) continue;
             if (f.canAfford(t.energy + 150, t.metal + 100, t.rare)) {

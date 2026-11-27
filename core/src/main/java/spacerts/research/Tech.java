@@ -90,4 +90,27 @@ public enum Tech {
     public Tech prereq() {
         return prereqName == null ? null : Tech.valueOf(prereqName);
     }
+
+    /** Column order of the research panel and RESEARCH_TREE.txt. */
+    public static final Branch[] PANEL_BRANCHES = {Branch.HUB, Branch.MILITARY, Branch.ECONOMY, Branch.COLONY, Branch.MOTHERSHIP};
+
+    /**
+     * The techs of one branch in panel order: by tier (then declaration order), and every follow-up right under
+     * the tech it builds on (Plasma Weapons I, then II).
+     */
+    public static java.util.List<Tech> branchOrder(Branch b) {
+        java.util.List<Tech> roots = new java.util.ArrayList<>(), out = new java.util.ArrayList<>();
+        for (Tech t : values()) if (t.branch == b && (t.prereq() == null || t.prereq().branch != b)) roots.add(t);
+        roots.sort(java.util.Comparator.comparingInt((Tech t) -> t.tier).thenComparingInt(Enum::ordinal));
+        for (Tech r : roots) addChain(r, out);
+        return out;
+    }
+
+    private static void addChain(Tech t, java.util.List<Tech> out) {
+        out.add(t);
+        java.util.List<Tech> kids = new java.util.ArrayList<>();
+        for (Tech k : values()) if (k.prereq() == t && k.branch == t.branch) kids.add(k);
+        kids.sort(java.util.Comparator.comparingInt((Tech k) -> k.tier).thenComparingInt(Enum::ordinal));
+        for (Tech k : kids) addChain(k, out);
+    }
 }

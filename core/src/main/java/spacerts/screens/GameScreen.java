@@ -43,6 +43,16 @@ public class GameScreen extends ScreenAdapter implements Lockstep.Runner {
     private final List<Command> localCommands = new ArrayList<>();
     private boolean desyncShown;
 
+    // ---- LAN loading screen: the game is drawn (warming up) behind it until every machine is ready
+    /** Frames drawn behind the loading screen before this machine reports ready. */
+    public static final int LOAD_FRAMES = 90;
+    /** Seconds of game time the throwaway warm-up world runs. */
+    public static final float WARMUP_SECONDS = 20f;
+    private volatile boolean simWarm;
+    private int loadFrames;
+    private float loadTime;
+    private com.badlogic.gdx.graphics.glutils.ShapeRenderer loadSr;
+
     public GameScreen(SpaceRtsGame game, World world) {
         this(game, world, null);
     }
@@ -59,7 +69,28 @@ public class GameScreen extends ScreenAdapter implements Lockstep.Runner {
         hud = new Hud(this);
         centerOnMothership();
         nextAutosave = world.time + AUTOSAVE_EVERY;
-        if (net != null) showHelp = false; // the help overlay can't pause a shared game
+        if (net != null) {
+            showHelp = false; // the help overlay can't pause a shared game
+            Thread warm = new Thread(() -> { // compiles the hot simulation code on a throwaway copy; the real world is untouched
+                try {
+                    warmUp(world.setup);
+                } catch (Throwable ignored) {
+                } finally {
+                    simWarm = true;
+                }
+            }, "sim-warmup");
+            warm.setDaemon(true);
+            warm.start();
+        }
+    }
+
+    /** Builds a scratch world from the same setup and runs it for a while, then throws it away. */
+    public static void warmUp(spacerts.world.GameSetup setup) {
+        World scratch = new World(setup);
+        spacerts.world.GalaxyGenerator.generate(scratch);
+        scratch.flushPending();
+        int ticks = (int) (WARMUP_SECONDS / Lockstep.STEP);
+        for (int i = 0; i < ticks; i++) scratch.update(Lockstep.STEP);
     }
 
     public boolean networked() {
@@ -105,6 +136,10 @@ public class GameScreen extends ScreenAdapter implements Lockstep.Runner {
 
     @Override
     public void render(float delta) {
+        if (net != null && !net.go) {
+            renderLoading(delta);
+            return;
+        }
         input.update(delta);
         if (net != null) {
             net.update(delta, this);
@@ -143,6 +178,64 @@ public class GameScreen extends ScreenAdapter implements Lockstep.Runner {
         renderer.render();
         hud.render();
         if (world.setup.mode == spacerts.world.GameSetup.Mode.MULTIPLAYER) empiresOverlay();
+    }
+
+    /** LAN loading: draws the game underneath (warming up the renderer), reports ready, and covers it all with the loading screen. */
+    private void renderLoading(float delta) {
+        net.update(delta, this);
+        loadTime += Math.min(delta, 0.25f);
+        loadFrames++;
+        if (simWarm && loadFrames >= LOAD_FRAMES && !net.isLocalReady()) net.markReady();
+        cam.update();
+        ScreenUtils.clear(0.008f, 0.01f, 0.03f, 1f);
+        renderer.render();
+        hud.render();
+        if (net.go) return; // just started: next frame is the game
+        float W = hudCam.viewportWidth, H = hudCam.viewportHeight;
+        if (loadSr == null) loadSr = new com.badlogic.gdx.graphics.glutils.ShapeRenderer();
+        com.badlogic.gdx.Gdx.gl.glEnable(com.badlogic.gdx.graphics.GL20.GL_BLEND);
+        loadSr.setProjectionMatrix(hudCam.combined);
+        loadSr.begin(com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType.Filled);
+        loadSr.setColor(0.01f, 0.015f, 0.04f, 1f);
+        loadSr.rect(0, 0, W, H);
+        float bw = Math.min(560, W - 80), bx = (W - bw) / 2, by = H * 0.42f;
+        float simPart = simWarm ? 1f : Math.min(0.95f, loadTime / 2f);
+        float drawPart = Math.min(1f, loadFrames / (float) LOAD_FRAMES);
+        float waitPart = net.isLocalReady() ? net.readyCount() / (float) Math.max(1, net.playerCount()) : 0f;
+        float progress = 0.15f + 0.35f * simPart + 0.25f * drawPart + 0.25f * waitPart;
+        loadSr.setColor(0.12f, 0.14f, 0.22f, 1f);
+        loadSr.rect(bx, by, bw, 14);
+        loadSr.setColor(0.35f, 0.7f, 1f, 1f);
+        loadSr.rect(bx, by, bw * Math.min(1f, progress), 14);
+        loadSr.end();
+        com.badlogic.gdx.graphics.g2d.BitmapFont f = game.font;
+        game.batch.setProjectionMatrix(hudCam.combined);
+        game.batch.begin();
+        f.getData().setScale(2f);
+        f.setColor(0.75f, 0.85f, 1f, 1f);
+        f.draw(game.batch, "LOADING", 0, H * 0.62f, W, com.badlogic.gdx.utils.Align.center, false);
+        f.getData().setScale(1.05f);
+        f.setColor(1f, 1f, 1f, 0.9f);
+        String step = !simWarm ? "Generating galaxy and warming up the simulation..."
+                : loadFrames < LOAD_FRAMES ? "Preparing the battlefield..."
+                : net.isHost() ? "Waiting for players (" + net.readyCount() + "/" + net.playerCount() + " ready)" : "Ready - waiting for the other players...";
+        f.draw(game.batch, step, 0, by - 16, W, com.badlogic.gdx.utils.Align.center, false);
+        f.getData().setScale(0.9f);
+        float y = by - 60;
+        for (spacerts.world.Faction fac : world.factions) {
+            if (!fac.isMajor()) continue;
+            f.setColor(fac.color);
+            String line = fac.name + (fac == world.player ? " (you)" : "") + (fac.kind == spacerts.world.Faction.Kind.RIVAL ? "  - " + fac.difficulty.title + " bot" : "");
+            f.draw(game.batch, line, 0, y, W, com.badlogic.gdx.utils.Align.center, false);
+            y -= 22;
+        }
+        if (net.hostLost) {
+            f.setColor(1f, 0.5f, 0.4f, 1f);
+            f.draw(game.batch, "Connection to the host lost - press Esc for the menu", 0, y - 16, W, com.badlogic.gdx.utils.Align.center, false);
+        }
+        f.getData().setScale(1f);
+        game.batch.end();
+        if (net.hostLost && com.badlogic.gdx.Gdx.input.isKeyJustPressed(com.badlogic.gdx.Input.Keys.ESCAPE)) toMenu();
     }
 
     /** Multiplayer: empires with their team and state at the top right; the LAN wait notice. */
@@ -240,6 +333,10 @@ public class GameScreen extends ScreenAdapter implements Lockstep.Runner {
         if (net != null) {
             if (net.hostLost) msg = "The host left the game.";
             net.close();
+        }
+        if (loadSr != null) {
+            loadSr.dispose();
+            loadSr = null;
         }
         game.setScreen(new MenuScreen(game, msg));
     }

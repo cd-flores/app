@@ -132,11 +132,19 @@ class TacticsTest {
         assertNotNull(fm);
         assertEquals(ships.size(), fm.members.size(), "every ship has a Bulldozer role");
 
-        // layout: snipers behind support behind the tanks; infantry ring around the tanks
+        // layout: snipers behind support behind the tanks; the infantry split into one ring per tank
         assertTrue(avg(role(fm, Role.SNIPER), true) < avg(role(fm, Role.SUPPORT), true));
         assertTrue(avg(role(fm, Role.SUPPORT), true) < avg(role(fm, Role.TANK), true));
         float tx = avg(role(fm, Role.TANK), true);
-        for (Member m : role(fm, Role.INFANTRY)) assertTrue(Math.hypot(m.sx - tx, m.sy) > 70, "ring outside the tank block");
+        java.util.Map<Member, Integer> perTank = new java.util.HashMap<>();
+        for (Member m : role(fm, Role.INFANTRY)) {
+            assertNotNull(m.guard, "every infantry ship guards a tank");
+            assertEquals(m.ringR, Math.hypot(m.sx - m.guard.sx, m.sy - m.guard.sy), 0.5, "on the ring around its own tank");
+            assertTrue(m.ringR >= m.guard.u.radius + 70 - 0.5f, "outside the tank");
+            perTank.merge(m.guard, 1, Integer::sum);
+        }
+        assertEquals(role(fm, Role.TANK).size(), perTank.size(), "every tank has its own group");
+        for (int n : perTank.values()) assertEquals(role(fm, Role.INFANTRY).size() / role(fm, Role.TANK).size(), n, "split evenly");
 
         run(w, 12);
         assertNotEquals(TacticsSystem.State.FORMING, fm.state, "formed up");

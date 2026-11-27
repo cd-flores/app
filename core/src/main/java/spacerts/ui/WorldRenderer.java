@@ -194,7 +194,15 @@ public class WorldRenderer {
         // placement preview at the cursor
         if (in.isPlacing()) {
             float[] cp = in.cursorWorld();
-            if (in.placingFlag) drawFlag(sr, cp[0], cp[1], w.player.color, 0.5f);
+            if (in.aimingWarp != null) { // Warp Jump: its reach, and where it would land
+                Unit ms = in.aimingWarp;
+                float reach = spacerts.systems.UnitBehavior.WARP_REACH;
+                float dx = cp[0] - ms.x, dy = cp[1] - ms.y, d = Math.max(1f, (float) Math.hypot(dx, dy)), k = Math.min(1f, reach / d);
+                sr.setColor(0.6f, 0.85f, 1f, 0.5f);
+                dashedRing(sr, ms.x, ms.y, reach, 1.5f * zoom, 64, w.time * 0.3f);
+                sr.setColor(0.6f, 0.85f, 1f, 0.35f);
+                sr.circle(ms.x + dx * k, ms.y + dy * k, ms.radius, 24);
+            } else if (in.placingFlag) drawFlag(sr, cp[0], cp[1], w.player.color, 0.5f);
             else if (in.placing.needsSite()) {
                 boolean ok = w.construction.siteBlocker(w.player, cp[0], cp[1], in.placing.s.radius) == null;
                 Color pc = ok ? SEL : DEFENDED_C;

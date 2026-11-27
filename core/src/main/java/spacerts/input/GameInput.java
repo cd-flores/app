@@ -35,6 +35,8 @@ public class GameInput extends InputAdapter {
     /** Placement modes: a structure chosen from a harvester's build list, or the rally flag. */
     public ShipClass placing;
     public boolean placingFlag;
+    /** Warp Jump: the Mothership waiting for a left-click on where to jump (null when not aiming). */
+    public Unit aimingWarp;
     private int factoryCycle;
 
     public boolean dragging;
@@ -62,15 +64,17 @@ public class GameInput extends InputAdapter {
         dragging = false;
         placing = null;
         placingFlag = false;
+        aimingWarp = null;
     }
 
     public boolean isPlacing() {
-        return placing != null || placingFlag;
+        return placing != null || placingFlag || aimingWarp != null;
     }
 
     public void cancelPlacement() {
         placing = null;
         placingFlag = false;
+        aimingWarp = null;
     }
 
     /** World position of the mouse cursor. */
@@ -141,6 +145,11 @@ public class GameInput extends InputAdapter {
 
     private boolean shift() {
         return Gdx.input.isKeyPressed(Input.Keys.SHIFT_LEFT) || Gdx.input.isKeyPressed(Input.Keys.SHIFT_RIGHT);
+    }
+
+    /** Ctrl+A picks the army: every warship except Patrol Ships and their skiffs, which fly their own circuit. */
+    public static boolean isArmy(Unit u) {
+        return u.cls.isWarship() && u.cls != ShipClass.PATROL && u.cls != ShipClass.PATROL_SKIFF;
     }
 
     private boolean ctrl() {
@@ -406,6 +415,12 @@ public class GameInput extends InputAdapter {
 
     private void confirmPlacement(float wx, float wy) {
         World w = w();
+        if (aimingWarp != null) { // Warp Jump: the Mothership jumps toward the click (clamped to its reach)
+            Unit ms = aimingWarp;
+            aimingWarp = null;
+            if (!ms.dead) gs.issue(new Command(Command.Type.ABILITY, 0).unit(ms).arg(Ability.WARP.ordinal()).at(wx, wy));
+            return;
+        }
         if (placingFlag) {
             placingFlag = false;
             w.ring(wx, wy, 60 * gs.cam.zoom, w.player.color, 0.5f);
@@ -654,7 +669,7 @@ public class GameInput extends InputAdapter {
             case Input.Keys.A:
                 if (ctrl()) {
                     selected.clear();
-                    for (Unit u : w.units) if (!u.dead && u.owner == w.player && u.cls.isWarship()) selected.add(u);
+                    for (Unit u : w.units) if (!u.dead && u.owner == w.player && isArmy(u)) selected.add(u);
                 }
                 return true;
             default:
@@ -812,6 +827,23 @@ public class GameInput extends InputAdapter {
         else if (ms) gs.confirmSurrender = true;
     }
 
+    /** L / the Warp Jump button: checks the Mothership can jump, then waits for a click on the destination. */
+    private void aimWarp() {
+        World w = w();
+        Unit ms = null;
+        for (Unit u : ownSelected()) if (u.cls == ShipClass.MOTHERSHIP) ms = u;
+        if (ms == null) return;
+        float cd = ms.abilityCds[Ability.WARP.ordinal()];
+        if (ms.tier < 2) w.notify(w.player, "Warp Jump needs Mothership tier II.", World.INFO);
+        else if (cd > 0) w.notify(w.player, "Warp Jump recharging (" + (int) Math.ceil(cd / 60f) + " min).", World.INFO);
+        else {
+            placing = null;
+            placingFlag = false;
+            aimingWarp = ms;
+            w.notify(w.player, "Warp Jump: left-click where to jump (up to " + (int) spacerts.systems.UnitBehavior.WARP_REACH + "). Right-click or Esc cancels.", World.INFO);
+        }
+    }
+
     /** Confirmed in the popup: the empire gives up. */
     public void surrender() {
         gs.confirmSurrender = false;
@@ -820,6 +852,7 @@ public class GameInput extends InputAdapter {
 
     /** Uses skill a on every selected ship that has it (its hotkey or its HUD button). */
     public void useAbility(Ability a) {
+        if (a == Ability.WARP) { aimWarp(); return; }
         List<Unit> mine = new ArrayList<>();
         for (Unit u : ownSelected()) if (u.s.has(a)) mine.add(u);
         if (!mine.isEmpty()) gs.issue(new Command(Command.Type.ABILITY, 0).units(mine).arg(a.ordinal()));

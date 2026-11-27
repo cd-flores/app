@@ -28,6 +28,18 @@ public class Faction {
     public final EnumSet<Tech> techs = EnumSet.noneOf(Tech.class);
     public Tech researching;
     public float researchProgress;
+    /** Second Research Hub (Mothership tier II): its own research, running alongside lab 1 (hub / researching). */
+    public Unit hub2;
+    public Tech researching2;
+    public float researchProgress2;
+
+    public boolean labUp(Unit h) { return h != null && !h.dead; }
+
+    /** Living Research Hubs (0-2). */
+    public int hubsAlive() { return (labUp(hub) ? 1 : 0) + (labUp(hub2) ? 1 : 0); }
+
+    /** True when either lab is researching t. */
+    public boolean researchingNow(Tech t) { return t != null && (researching == t || researching2 == t); }
     public boolean eliminated;
     /** Alliance: factions sharing a non-zero team are allies (shared vision, no friendly fire). 0 = no team. */
     public int team;

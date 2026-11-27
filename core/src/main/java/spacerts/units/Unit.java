@@ -37,6 +37,8 @@ public class Unit {
     public float ghostTimer;
     /** Burning (Pyre fire): seconds left and damage per second. */
     public float burnTime, burnDps;
+    /** Warp Jump: seconds left moving at (at least) scout speed. */
+    public float sprintTimer;
     /** Evasive Dash (snipers): sliding backward at (dashVx, dashVy) while > 0. */
     public float dashTimer, dashVx, dashVy;
     public float tauntTimer, forcedTimer;

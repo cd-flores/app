@@ -34,10 +34,16 @@ public class ProductionSystem {
             }
         }
         for (Faction f : w.factions) {
-            if (f.researching == null || f.eliminated) continue;
-            if (f.hub == null || f.hub.dead) continue;
-            f.researchProgress += dt * researchSpeed(f) * (f.fastResearch ? 10f : 1f) / f.researching.time; // WhoIsJohnGalt cheat
-            if (f.researchProgress >= 1f) complete(f, f.researching);
+            if (f.eliminated) continue;
+            float rate = dt * researchSpeed(f) * (f.fastResearch ? 10f : 1f); // WhoIsJohnGalt cheat
+            if (f.researching != null && f.labUp(f.hub)) {
+                f.researchProgress += rate / f.researching.time;
+                if (f.researchProgress >= 1f) complete(f, f.researching);
+            }
+            if (f.researching2 != null && f.labUp(f.hub2)) { // the second lab works in parallel
+                f.researchProgress2 += rate / f.researching2.time;
+                if (f.researchProgress2 >= 1f) complete(f, f.researching2);
+            }
         }
     }
 
@@ -153,7 +159,7 @@ public class ProductionSystem {
             if (w.queued(f, c) > 0) return "Stellar Refinement already in progress";
             if (f.refinement >= Faction.REFINEMENT_MAX) return "Stellar Refinement maxed (" + Faction.REFINEMENT_MAX + ")";
         }
-        if (c == ShipClass.HUB && ((f.hub != null && !f.hub.dead) || w.queued(f, ShipClass.HUB) > 0)) return "Only one Research Hub allowed";
+        if (c == ShipClass.HUB && f.hubsAlive() + w.queued(f, ShipClass.HUB) >= ConstructionSystem.maxHubs(f)) return "Research Hub limit reached";
         if (c == ShipClass.SHIPYARD) {
             if (p.home == null) return "Must be built at a colony";
             if ((p.home.shipyard != null && !p.home.shipyard.dead) || !p.queue.items.isEmpty()) return "This colony already has a shipyard";
@@ -237,8 +243,9 @@ public class ProductionSystem {
 
     public String researchBlocker(Faction f, Tech t) {
         if (f.has(t)) return "Already researched";
-        if (f.hub == null || f.hub.dead) return "Requires a Research Hub";
-        if (f.researching != null) return "Already researching " + f.researching.title;
+        if (f.hubsAlive() == 0) return "Requires a Research Hub";
+        if (f.researchingNow(t)) return "Already researching " + t.title;
+        if (freeLab(f) == 0) return f.hubsAlive() > 1 ? "Both labs are busy" : "Already researching " + (f.researching != null ? f.researching.title : f.researching2.title);
         if (f.hubTier() < t.tier && !f.synergy) return "Requires Hub tier " + t.tier;
         Tech pre = t.prereq();
         if (pre != null && !f.has(pre) && !f.synergy) return "Requires " + pre.title;
@@ -251,17 +258,39 @@ public class ProductionSystem {
         String miss = f.missing(t.energy, t.metal, t.rare);
         if (miss != null) return miss;
         f.pay(t.energy, t.metal, t.rare);
-        f.researching = t;
-        f.researchProgress = 0;
+        if (freeLab(f) == 1) {
+            f.researching = t;
+            f.researchProgress = 0;
+        } else {
+            f.researching2 = t;
+            f.researchProgress2 = 0;
+        }
         return null;
     }
 
+    /** The first standing lab with nothing to research: 1, 2, or 0 when none. */
+    public static int freeLab(Faction f) {
+        if (f.labUp(f.hub) && f.researching == null) return 1;
+        if (f.labUp(f.hub2) && f.researching2 == null) return 2;
+        return 0;
+    }
+
+    /** Cancels lab 1's research (refunded in full). */
     public void cancelResearch(Faction f) {
-        if (f.researching == null) return;
-        Tech t = f.researching;
+        if (f.researching != null) cancelResearch(f, f.researching);
+    }
+
+    /** Cancels whichever lab is researching t (refunded in full). */
+    public void cancelResearch(Faction f, Tech t) {
+        if (t == null) return;
+        if (f.researching == t) {
+            f.researching = null;
+            f.researchProgress = 0;
+        } else if (f.researching2 == t) {
+            f.researching2 = null;
+            f.researchProgress2 = 0;
+        } else return;
         f.refund(t.energy, t.metal, t.rare);
-        f.researching = null;
-        f.researchProgress = 0;
     }
 
     public void complete(Faction f, Tech t) {
@@ -278,8 +307,14 @@ public class ProductionSystem {
                 oldMax.add(u.maxHp());
             }
         f.techs.add(t);
-        f.researching = null;
-        f.researchProgress = 0;
+        if (f.researching == t) {
+            f.researching = null;
+            f.researchProgress = 0;
+        }
+        if (f.researching2 == t) {
+            f.researching2 = null;
+            f.researchProgress2 = 0;
+        }
         for (int i = 0; i < mine.size(); i++) {
             Unit u = mine.get(i);
             float nm = u.maxHp();

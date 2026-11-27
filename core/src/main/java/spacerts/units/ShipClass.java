@@ -10,8 +10,8 @@ import static spacerts.units.ArmorType.*;
  */
 public enum ShipClass {
     MOTHERSHIP(new Spec("Mothership", "Your flagship. Builds Harvesters. If it dies, you lose.")
-            .hp(6000).shield(1500, 15).armor(0.35f).speed(28).weapon(450, 28, 0.5f)
-            .vision(950).radius(60).type(HEAVY).producer()),
+            .hp(12000).shield(1500, 15).armor(0.35f).speed(28).weapon(450, 28, 0.5f)
+            .vision(950).radius(60).type(HEAVY).producer().ability(Ability.WARP)),
     HARVESTER(new Spec("Harvester", "Collects energy and metal. Also builds Ship Stations, the Research Hub, planet defenses and Repair Stations.")
             .cost(50, 0, 2).hp(120).speed(115).vision(350).radius(10).build(6).harvester()),
     COLONY_SHIP(new Spec("Colony Ship", "Settles a habitable planet for housing. Defended worlds must be cleared first.")

@@ -344,7 +344,10 @@ public class World {
         Unit u = new Unit(nextId++, c, f, clampX(x, y), clampY(x, y));
         pending.add(u);
         if (c == ShipClass.MOTHERSHIP) f.mothership = u;
-        if (c == ShipClass.HUB) f.hub = u;
+        if (c == ShipClass.HUB) {
+            if (f.hub == null || f.hub.dead) f.hub = u;
+            else f.hub2 = u; // the second lab (Mothership tier II)
+        }
         return u;
     }
 
@@ -472,6 +475,13 @@ public class World {
                         f.researching = null;
                         f.researchProgress = 0;
                     } else notify(f, "Research Hub destroyed!", ALERT);
+                } else if (f.hub2 == u) {
+                    f.hub2 = null;
+                    if (f.researching2 != null) {
+                        notify(f, "Second Research Hub destroyed! Research of " + f.researching2.title + " lost.", ALERT);
+                        f.researching2 = null;
+                        f.researchProgress2 = 0;
+                    } else notify(f, "Second Research Hub destroyed!", ALERT);
                 }
                 break;
             case COLONY:
@@ -542,6 +552,7 @@ public class World {
         if (f.eliminated) return;
         f.eliminated = true;
         f.researching = null;
+        f.researching2 = null;
         for (Unit o : units) if (o.owner == f && !o.dead) o.kill(false);
         for (Unit o : pending) if (o.owner == f) o.kill(true);
         if (f == player) {

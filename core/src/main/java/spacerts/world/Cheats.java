@@ -179,6 +179,8 @@ public final class Cheats {
                 for (Tech t : Tech.values()) if (!f.has(t)) w.production.complete(f, t, false);
                 f.researching = null;
                 f.researchProgress = 0;
+                f.researching2 = null;
+                f.researchProgress2 = 0;
                 for (Unit u : w.units)
                     if (!u.dead && u.owner == f && (u.cls == ShipClass.MOTHERSHIP || u.cls == ShipClass.FACTORY) && u.tier < 3) {
                         float hp = u.hp / u.maxHp(), sh = u.maxShield() > 0 ? u.shield / u.maxShield() : 0;

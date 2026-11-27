@@ -59,10 +59,10 @@ public final class SaveManager {
 
     public static class FactionData {
         public double energy, metal;
-        public float researchProgress;
+        public float researchProgress, researchProgress2;
         public int[] rare;
         public String[] techs;
-        public String researching;
+        public String researching, researching2;
         public boolean eliminated, hasFlag, autoDefenseOff, rallyStations;
         /** Cheat state (single player). */
         public boolean cheatsUnlocked, cheatsUsed, godMode, noFog, warpTen, fastResearch, synergy, noHousing, noCooldowns, fastDecay, noDefeat;
@@ -99,7 +99,7 @@ public final class SaveManager {
         public String[] queue;
         /** What was paid for each queued item: energy, metal, energy, metal, ... (older saves: missing = base price). */
         public int[] queuePaid;
-        public float x, y, hp, shield, angle, tx, ty, anchorX, anchorY, cargo, work, progress, rallyX, rallyY, radius, abilityCd, ghostTimer, burnTime, burnDps;
+        public float x, y, hp, shield, angle, tx, ty, anchorX, anchorY, cargo, work, progress, rallyX, rallyY, radius, abilityCd, ghostTimer, burnTime, burnDps, sprintTimer;
         /** Cooldown left for each ability (by ordinal); old saves only have abilityCd. */
         public float[] abilityCds;
         /** Targeting mode name (older saves: nearest). */
@@ -178,6 +178,8 @@ public final class SaveManager {
             for (Tech t : f.techs) fd.techs[k++] = t.name();
             fd.researching = f.researching != null ? f.researching.name() : null;
             fd.researchProgress = f.researchProgress;
+            fd.researching2 = f.researching2 != null ? f.researching2.name() : null;
+            fd.researchProgress2 = f.researchProgress2;
             fd.eliminated = f.eliminated;
             fd.hasFlag = f.hasFlag;
             fd.autoDefenseOff = !f.autoDefense;
@@ -276,6 +278,7 @@ public final class SaveManager {
             ud.ghostTimer = u.ghostTimer;
             ud.burnTime = u.burnTime;
             ud.burnDps = u.burnDps;
+            ud.sprintTimer = u.sprintTimer;
             ud.targeting = u.targeting.name();
             ud.leaving = u.leaving;
             ud.retreating = u.retreating;
@@ -377,6 +380,8 @@ public final class SaveManager {
             if (fd.techs != null) for (String t : fd.techs) f.techs.add(Tech.valueOf(t));
             f.researching = fd.researching != null ? Tech.valueOf(fd.researching) : null;
             f.researchProgress = fd.researchProgress;
+            f.researching2 = fd.researching2 != null ? Tech.valueOf(fd.researching2) : null;
+            f.researchProgress2 = fd.researchProgress2;
             f.eliminated = fd.eliminated;
             f.hasFlag = fd.hasFlag;
             f.autoDefense = !fd.autoDefenseOff;
@@ -480,6 +485,7 @@ public final class SaveManager {
             u.ghostTimer = ud.ghostTimer;
             u.burnTime = ud.burnTime;
             u.burnDps = ud.burnDps;
+            u.sprintTimer = ud.sprintTimer;
             if (ud.targeting != null)
                 try { u.targeting = spacerts.units.Targeting.valueOf(ud.targeting); } catch (IllegalArgumentException ignored) {}
             u.leaving = ud.leaving;

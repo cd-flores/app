@@ -24,15 +24,25 @@ public final class NetClient {
     /** Set when the host starts the game. */
     public GameSetup started;
     public boolean closedByHost;
+    /** Set by close(), even while still connecting: a closed client never sends HELLO or takes a seat. */
+    private volatile boolean closed;
 
     public NetClient(String host, String name) {
         Thread t = new Thread(() -> {
             try {
                 Socket s = new Socket();
                 s.connect(new InetSocketAddress(host, Protocol.TCP_PORT), 4000);
+                if (closed) { // given up on while connecting (for example a double-click on a game)
+                    s.close();
+                    return;
+                }
                 Connection c = new Connection(s, inbox);
-                c.send(Protocol.HELLO, Protocol.hello(name));
                 conn = c;
+                if (closed) { // closed between the check above and publishing conn
+                    c.close();
+                    return;
+                }
+                c.send(Protocol.HELLO, Protocol.hello(name));
             } catch (IOException e) {
                 error = "Could not connect to " + host + " (" + e.getMessage() + ")";
             } finally {
@@ -106,10 +116,11 @@ public final class NetClient {
 
     public boolean isClosed() {
         Connection c = conn;
-        return !connecting && (c == null || c.isClosed());
+        return closed || (!connecting && (c == null || c.isClosed()));
     }
 
     public void close() {
+        closed = true;
         Connection c = conn;
         if (c != null) {
             c.send(Protocol.BYE, new byte[0]);

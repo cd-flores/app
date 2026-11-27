@@ -207,10 +207,17 @@ public class MovementSystem {
             u.warping = ms.warping;
             u.warpCharge = 0;
         } else {
-            speed = u.speed();
-            float boost = boost(u);
-            u.boosted = boost > 1f;
-            speed *= boost;
+            float formed = w.tactics.formationSpeed(u); // formed-up tactic ships all march at Lancer speed
+            if (formed > 0) {
+                speed = formed;
+                u.boosted = false;
+            } else {
+                speed = u.speed();
+                if (u.sprintTimer > 0) speed = Math.max(speed, ShipClass.WISP.s.speed * u.owner.speedMult()); // Warp Jump sprint
+                float boost = boost(u);
+                u.boosted = boost > 1f;
+                speed *= boost;
+            }
             if (u.retreating && u.owner.has(spacerts.research.Tech.EMERGENCY_THRUSTERS)) speed *= 1.6f; // damaged ships get away
             if (u.slowTimer > 0) speed *= 0.5f; // Jump Inhibitors
             if (u.ghostTimer > 0) speed *= UnitBehavior.GHOST_SPEED; // Ghost Drive

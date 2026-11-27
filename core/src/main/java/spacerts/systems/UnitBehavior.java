@@ -42,6 +42,7 @@ public class UnitBehavior {
         if (u.cooldown > 0) u.cooldown -= dt;
         for (int i = 0; i < u.abilityCds.length; i++) if (u.abilityCds[i] > 0) u.abilityCds[i] -= dt;
         if (u.ghostTimer > 0) u.ghostTimer -= dt;
+        if (u.sprintTimer > 0) u.sprintTimer -= dt;
         if (u.burnTime > 0) { // Pyre fire: armor doesn't help
             u.burnTime -= dt;
             w.combat.applyDamage(u, u.burnDps * dt, true, null);
@@ -280,9 +281,16 @@ public class UnitBehavior {
     public static final float GHOST_TIME = 6f, GHOST_SPEED = 1.6f, GHOST_CD = 30f;
     /** Evasive Dash: distance, duration of the slide, cooldown. */
     public static final float DASH_DIST = 400f, DASH_TIME = 0.35f, DASH_CD = 15f;
+    /** Warp Jump (Mothership tier II): reach, scout-speed sprint after the jump, cooldown (20 minutes). */
+    public static final float WARP_REACH = 1000f, WARP_SPRINT = 20f, WARP_CD = 20 * 60f;
 
     /** Uses ability a of unit u. Returns a failure reason or null on success. */
     public String useAbility(Unit u, Ability a) {
+        return useAbility(u, a, u.x, u.y);
+    }
+
+    /** Uses ability a of unit u aimed at (x, y) (only Warp Jump uses the point). Returns a failure reason or null. */
+    public String useAbility(Unit u, Ability a, float x, float y) {
         if (a == null || a == Ability.NONE || !u.s.has(a)) return "No ability";
         float cd = u.abilityCds[a.ordinal()];
         if (cd > 0) return a.title + " recharging (" + (int) Math.ceil(cd) + "s)";
@@ -335,6 +343,26 @@ public class UnitBehavior {
                 cd = 20;
                 w.ring(u.x, u.y, tr, new Color(1f, 0.85f, 0.3f, 1f), 0.6f);
                 break;
+            case WARP: {
+                if (u.tier < 2) return "Warp Jump needs Mothership tier II";
+                float dx = x - u.x, dy = y - u.y, d = (float) Math.hypot(dx, dy);
+                if (d < 1f) return "Pick a spot to jump to";
+                float k = Math.min(1f, WARP_REACH / d);
+                float nx = w.clampX(u.x + dx * k, u.y + dy * k), ny = w.clampY(u.x + dx * k, u.y + dy * k);
+                Color wc = new Color(0.6f, 0.85f, 1f, 1f);
+                w.ring(u.x, u.y, u.radius * 3f, wc, 0.6f);
+                w.beam(u.x, u.y, nx, ny, wc, 6f, 0.4f);
+                u.x = nx;
+                u.y = ny;
+                u.vx = u.vy = 0;
+                u.anchorX = nx;
+                u.anchorY = ny;
+                u.idle();
+                u.sprintTimer = WARP_SPRINT;
+                w.ring(nx, ny, u.radius * 3f, wc, 0.8f);
+                cd = WARP_CD;
+                break;
+            }
             case NOVA: {
                 if (!u.owner.has(Tech.NOVA_CANNON)) return "Requires Nova Cannon research";
                 Unit t = u.target != null ? u.target : acquire(u, 950, null, 0);

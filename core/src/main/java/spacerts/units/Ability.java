@@ -10,7 +10,9 @@ public enum Ability {
     TAUNT("Taunt", Input.Keys.T, "T"),
     DASH("Evasive Dash", Input.Keys.Z, "Z"),
     NOVA("Nova Cannon", Input.Keys.N, "N"),
-    OVERCHARGE("Overcharge", Input.Keys.O, "O");
+    OVERCHARGE("Overcharge", Input.Keys.O, "O"),
+    /** Mothership tier II: jump up to 1000 to a chosen point, then 20 s at scout speed. */
+    WARP("Warp Jump", Input.Keys.L, "L");
 
     public final String title;
     /** libGDX key code and its label. */

@@ -258,6 +258,23 @@ class MultiplayerTest {
 
             Lockstep hl = Lockstep.host(host), cl = Lockstep.client(client);
             Sim hsim = new Sim(hw), csim = new Sim(cw);
+            // loading handshake: nothing runs until both machines are ready
+            for (int i = 0; i < 5; i++) {
+                hl.update(Lockstep.TURN_TIME, hsim);
+                cl.update(Lockstep.TURN_TIME, csim);
+                Thread.sleep(5);
+            }
+            assertEquals(0, hl.turn, "no turns while loading");
+            assertFalse(hl.go);
+            hl.markReady();
+            cl.markReady();
+            until = System.currentTimeMillis() + 3000;
+            while (!(hl.go && cl.go) && System.currentTimeMillis() < until) {
+                hl.update(0, hsim);
+                cl.update(0, csim);
+                Thread.sleep(5);
+            }
+            assertTrue(hl.go && cl.go, "GO once everyone is ready");
             for (int frame = 0; frame < 300; frame++) {
                 if (frame == 20) { // each side orders its own lancers
                     List<Unit> mine = new ArrayList<>();

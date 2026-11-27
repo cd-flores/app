@@ -688,14 +688,17 @@ public class Hud {
                 break;
             case HUB:
                 sb.append("Hub tier ").append(u.owner.hubTier()).append("\n");
-                if (u.owner == w.player && u.owner.researching != null) {
-                    sb.append("Researching ").append(u.owner.researching.title).append(" ").append((int) (u.owner.researchProgress * 100)).append("%\n");
+                Tech labTech = u == u.owner.hub2 ? u.owner.researching2 : u.owner.researching;
+                float labProg = u == u.owner.hub2 ? u.owner.researchProgress2 : u.owner.researchProgress;
+                if (u.owner == w.player && labTech != null) {
+                    final Tech cancelT = labTech;
+                    sb.append(u == u.owner.hub2 ? "Lab 2 researching " : "Researching ").append(labTech.title).append(" ").append((int) (labProg * 100)).append("%\n");
                     float bx = x, by = 12;
                     boolean hov = hovered(bx, by, 130, 22);
                     sr.setColor(hov ? 0.5f : 0.3f, hov ? 0.15f : 0.08f, hov ? 0.15f : 0.08f, 1f);
                     sr.rect(bx, by, 130, 22);
                     txt(bx + 8, by + 16, "Cancel research", Color.WHITE, 0.8f);
-                    buttons.add(new Btn(bx, by, 130, 22, () -> gs.issue(new spacerts.net.Command(spacerts.net.Command.Type.CANCEL_RESEARCH, 0))));
+                    buttons.add(new Btn(bx, by, 130, 22, () -> gs.issue(new spacerts.net.Command(spacerts.net.Command.Type.RESEARCH, 0).tech(cancelT))));
                 }
                 break;
             default:
@@ -953,63 +956,99 @@ public class Hud {
     }
 
     private void researchPanel(ShapeRenderer sr, World w, Faction p) {
-        Tech[] all = Tech.values();
-        float bw = 204, bh = 38, gap = 5;
-        int cols = Math.max(1, (int) ((W - 24 + gap) / (bw + gap)));
-        int rows = (all.length + cols - 1) / cols;
-        rpW = cols * (bw + gap) - gap + 12;
-        rpH = rows * (bh + gap) + 34;
+        // one column per branch (Hub, Military, Economy, Colony, Mothership); tall branches wrap into extra columns
+        float gap = 5, head = 34, branchHead = 18;
+        float avail = H - BOTTOM - 8 - 46 - head - branchHead; // below the top bar
+        float bh = 38;
+        java.util.List<java.util.List<Tech>> cols = new java.util.ArrayList<>();
+        java.util.List<Tech.Branch> colBranch = new java.util.ArrayList<>();
+        java.util.List<Boolean> colFirst = new java.util.ArrayList<>();
+        for (int attempt = 0; attempt < 2; attempt++) { // shrink the buttons once if the columns get too narrow
+            cols.clear();
+            colBranch.clear();
+            colFirst.clear();
+            int perCol = Math.max(3, (int) ((avail + gap) / (bh + gap)));
+            for (Tech.Branch b : Tech.PANEL_BRANCHES) {
+                java.util.List<Tech> list = Tech.branchOrder(b);
+                for (int i = 0; i < list.size(); i += perCol) {
+                    cols.add(list.subList(i, Math.min(list.size(), i + perCol)));
+                    colBranch.add(b);
+                    colFirst.add(i == 0);
+                }
+            }
+            if ((W - 24 - (cols.size() - 1) * gap) / cols.size() >= 150 || attempt == 1) break;
+            bh = 31;
+        }
+        float bw = Math.min(214, (W - 24 - (cols.size() - 1) * gap) / cols.size());
+        int rows = 0;
+        for (java.util.List<Tech> c : cols) rows = Math.max(rows, c.size());
+        rpW = cols.size() * (bw + gap) - gap + 12;
+        rpH = rows * (bh + gap) + head + branchHead;
         rpX = 10;
         rpY = BOTTOM + 8;
         rpVisible = true;
         sr.setColor(PANEL);
         sr.rect(rpX, rpY, rpW, rpH);
         border(sr, rpX, rpY, rpW, rpH, ACCENT);
-        String head = "RESEARCH HUB - Tier " + p.hubTier();
-        if (p.researching != null)
-            head += "      Researching: " + p.researching.title + " (" + (int) (p.researchProgress * 100) + "%) - click it again to cancel";
-        else head += "      Select a technology to research";
-        txt(rpX + 8, rpY + rpH - 9, head, TITLE, 0.9f);
+        String title = (p.hubsAlive() > 1 ? "RESEARCH - 2 LABS" : "RESEARCH HUB") + " - Tier " + p.hubTier();
+        String labs = "";
+        if (p.researching != null) labs += "Lab 1: " + p.researching.title + " " + (int) (p.researchProgress * 100) + "%";
+        if (p.researching2 != null) labs += (labs.isEmpty() ? "" : "    ") + "Lab 2: " + p.researching2.title + " " + (int) (p.researchProgress2 * 100) + "%";
+        boolean free = spacerts.systems.ProductionSystem.freeLab(p) > 0;
+        title += labs.isEmpty() ? "      Select a technology to research"
+                : "      " + labs + (free ? "   - a lab is free" : "") + "   (click a tech in progress to cancel)";
+        txt(rpX + 8, rpY + rpH - 9, title, TITLE, 0.9f);
 
-        for (int i = 0; i < all.length; i++) {
-            Tech t = all[i];
-            int col = i % cols, row = i / cols;
-            float bx = rpX + 6 + col * (bw + gap);
-            float by = rpY + rpH - 30 - (row + 1) * (bh + gap) + gap;
-            boolean done = p.has(t);
-            boolean active = p.researching == t;
-            String block = w.production.researchBlocker(p, t);
-            String miss = p.missing(t.energy, t.metal, t.rare);
-            boolean ok = block == null && miss == null;
-            boolean hov = hovered(bx, by, bw, bh);
-            if (done) sr.setColor(0.06f, 0.2f, 0.1f, 1f);
-            else if (active) sr.setColor(0.08f, 0.2f, 0.35f, 1f);
-            else if (ok) sr.setColor(hov ? 0.14f : 0.09f, hov ? 0.22f : 0.15f, hov ? 0.36f : 0.25f, 1f);
-            else sr.setColor(hov ? 0.12f : 0.07f, hov ? 0.12f : 0.07f, hov ? 0.14f : 0.09f, 1f);
-            sr.rect(bx, by, bw, bh);
-            sr.setColor(t.branch.color.r, t.branch.color.g, t.branch.color.b, done || ok || active ? 0.9f : 0.35f);
-            sr.rect(bx, by, 3, bh);
-            if (active) {
-                sr.setColor(0.3f, 0.65f, 1f, 0.9f);
-                sr.rect(bx, by, bw * p.researchProgress, 3);
+        float top = rpY + rpH - head;
+        for (int ci = 0; ci < cols.size(); ci++) {
+            float bx = rpX + 6 + ci * (bw + gap);
+            Tech.Branch br = colBranch.get(ci);
+            txt(bx + 2, top - 2, br.title.toUpperCase() + (colFirst.get(ci) ? "" : " (cont.)"), br.color, 0.78f);
+            java.util.List<Tech> col = cols.get(ci);
+            for (int ri = 0; ri < col.size(); ri++) {
+                Tech t = col.get(ri);
+                float by = top - branchHead - (ri + 1) * (bh + gap) + gap;
+                techButton(sr, w, p, t, bx, by, bw, bh);
             }
-            Color tc = done ? new Color(0.5f, 0.9f, 0.55f, 1f) : (ok || active ? Color.WHITE : GRAY);
-            txt(bx + 8, by + bh - 6, t.title, tc, fit(t.title, 0.78f, bw - 12));
-            String sub = done ? "Researched" : "T" + t.tier + "  " + ProductionSystem.costText(t.energy, t.metal, t.rare);
-            txt(bx + 8, by + 15, sub, done ? DIM : (ok ? new Color(0.85f, 0.85f, 0.6f, 1f) : new Color(0.6f, 0.45f, 0.45f, 1f)), fit(sub, 0.68f, bw - 12));
-            final Tech ft = t;
-            buttons.add(new Btn(bx, by, bw, bh, () -> { // clicking the active research cancels it
-                if (!p.has(ft)) gs.issue(new spacerts.net.Command(spacerts.net.Command.Type.RESEARCH, 0).tech(ft));
-            }));
-            if (hov) {
-                StringBuilder sb = new StringBuilder();
-                sb.append(t.title).append("  [").append(t.branch.title).append("]\n").append(t.desc).append("\n\n");
-                sb.append("Cost: ").append(ProductionSystem.costText(t.energy, t.metal, t.rare)).append("\n");
-                sb.append("Time: ").append((int) t.time).append("s   Requires Hub tier ").append(t.tier);
-                if (t.prereq() != null) sb.append("\nPrerequisite: ").append(t.prereq().title);
-                if (!done && !active && (block != null || miss != null)) sb.append("\n\n> ").append(block != null ? block : miss);
-                tooltip = sb.toString();
-            }
+        }
+    }
+
+    /** One tech in the research panel: state colours, branch stripe, cost line, click to research or cancel, tooltip. */
+    private void techButton(ShapeRenderer sr, World w, Faction p, Tech t, float bx, float by, float bw, float bh) {
+        boolean done = p.has(t);
+        boolean active = p.researchingNow(t);
+        float progress = p.researching == t ? p.researchProgress : p.researching2 == t ? p.researchProgress2 : 0;
+        String block = w.production.researchBlocker(p, t);
+        String miss = p.missing(t.energy, t.metal, t.rare);
+        boolean ok = block == null && miss == null;
+        boolean hov = hovered(bx, by, bw, bh);
+        if (done) sr.setColor(0.06f, 0.2f, 0.1f, 1f);
+        else if (active) sr.setColor(0.08f, 0.2f, 0.35f, 1f);
+        else if (ok) sr.setColor(hov ? 0.14f : 0.09f, hov ? 0.22f : 0.15f, hov ? 0.36f : 0.25f, 1f);
+        else sr.setColor(hov ? 0.12f : 0.07f, hov ? 0.12f : 0.07f, hov ? 0.14f : 0.09f, 1f);
+        sr.rect(bx, by, bw, bh);
+        sr.setColor(t.branch.color.r, t.branch.color.g, t.branch.color.b, done || ok || active ? 0.9f : 0.35f);
+        sr.rect(bx, by, 3, bh);
+        if (active) {
+            sr.setColor(0.3f, 0.65f, 1f, 0.9f);
+            sr.rect(bx, by, bw * progress, 3);
+        }
+        Color tc = done ? new Color(0.5f, 0.9f, 0.55f, 1f) : (ok || active ? Color.WHITE : GRAY);
+        txt(bx + 8, by + bh - 6, t.title, tc, fit(t.title, 0.78f, bw - 12));
+        String sub = done ? "Researched" : "T" + t.tier + "  " + ProductionSystem.costText(t.energy, t.metal, t.rare);
+        txt(bx + 8, by + Math.min(15, bh - 20), sub, done ? DIM : (ok ? new Color(0.85f, 0.85f, 0.6f, 1f) : new Color(0.6f, 0.45f, 0.45f, 1f)), fit(sub, 0.68f, bw - 12));
+        final Tech ft = t;
+        buttons.add(new Btn(bx, by, bw, bh, () -> { // clicking a tech in progress cancels it
+            if (!p.has(ft)) gs.issue(new spacerts.net.Command(spacerts.net.Command.Type.RESEARCH, 0).tech(ft));
+        }));
+        if (hov) {
+            StringBuilder sb = new StringBuilder();
+            sb.append(t.title).append("  [").append(t.branch.title).append("]\n").append(t.desc).append("\n\n");
+            sb.append("Cost: ").append(ProductionSystem.costText(t.energy, t.metal, t.rare)).append("\n");
+            sb.append("Time: ").append((int) t.time).append("s   Requires Hub tier ").append(t.tier);
+            if (t.prereq() != null) sb.append("\nPrerequisite: ").append(t.prereq().title);
+            if (!done && !active && (block != null || miss != null)) sb.append("\n\n> ").append(block != null ? block : miss);
+            tooltip = sb.toString();
         }
     }
 

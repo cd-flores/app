@@ -338,6 +338,7 @@ public class MenuScreen extends ScreenAdapter {
             status = "Enter the host's room code, or pick a game from the list.";
             return;
         }
+        if (client != null && !client.isClosed()) return; // already joining: ignore double-clicks and repeat presses
         String addr = RoomCode.resolve(typed);
         if (addr == null) {
             status = "'" + typed.trim() + "' isn't a valid room code - check it with the host.";
