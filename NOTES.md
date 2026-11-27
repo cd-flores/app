@@ -4,7 +4,7 @@ Context for picking this project up on another computer. The README describes th
 
 ## Status
 - Branch: `feature/hive-galaxy` (not merged into `main` yet).
-- Build and tests: `./gradlew :core:test --offline` (116 tests, all passing). Run the game with `./gradlew lwjgl3:run` (or `run.bat`).
+- Build and tests: `./gradlew :core:test --offline` (119 tests, all passing). Run the game with `./gradlew lwjgl3:run` (or `run.bat`).
 - Java 17+, libGDX (LWJGL3 desktop). There is no Python on the original machine, so edits were made by hand or with sed/awk.
 
 ## Ground rules of the codebase
@@ -30,14 +30,23 @@ Context for picking this project up on another computer. The README describes th
    - Upgrades: Martyr Charge, Crippling Line, Ramming Plates, Shield Wall, Replenish.
    - Per-ship targeting modes (K): nearest / farthest / most / least health / random.
    - **Y** toggles tactics; the tactic is picked at the Command Center.
+10. **Bots use Bulldozer** (`ai/RivalAI`: `commandCenter`, `tacticalLaunch`): Hard / Insane bots build a Command Center once their Hub stands (from 12 min, Insane 9 min, with 900/900 spare), unlock Bulldozer, then Shield Wall and Ramming Plates when rich (2500/2500). When an assault is grouped and the target is at least 1500 away, the ships near the leader (needs a tank and 6 ships) march in as a Bulldozer; the rest attack-move as before. Bot orders go through `RivalAI.order`, which drops the ship out of its formation first, and `attackMove` skips formation members.
+
+## Performance (stress test)
+- `./gradlew :core:stressTest --offline` (`StressTest`, tagged `stress`, left out of `test`) times `World.update` with more and more near-unkillable ships and writes `core/build/reports/stress/stress-*.csv`. It asserts only correctness (no NaN), never speed.
+- The budget is 33 ms per update (30 a second). Measured on the dev PC (JDK 25), logic only, no rendering:
+  - **Battle** (two fleets fighting in one spot, worst case): about 10,400 units at 27 ms average (p95 41 ms); 15,500 units is over budget (51 ms).
+  - **Spread out** (ships flying across the map, no combat): about 19,000 units at 23 ms; 28,000 units is over budget (50 ms).
+  - Up to about 5,000 units in battle, an update takes under 10 ms. Cost grows faster than the unit count once one fight packs thousands of ships together.
+- Not measured: drawing (FPS), and real games with bots and pirates at these counts.
 
 ## Not verified / known gaps
 - Nothing visual has been checked with screenshots. Worth a look in game: the tactic toggle and the Command Center's tactic picker (both sit just above the bottom bar), the chat box, the surrender popup, the paginated tutorial, and the top bar at small window sizes.
 - LAN play has only been tested over localhost (automated test), not between two real PCs. Windows Firewall will ask to allow Java on first host.
 - Tactic tuning (spacing, the Flank arc of 900, Ramming damage 800 × durability, Pincer trigger at 85% hull) is untested in real fights.
-- Bots don't use tactics, the Command Center, Ghost Drive or Dash yet (they do auto-use skills they have via `UnitBehavior.autoAbility`).
+- Bots only use Bulldozer (Hard / Insane). They don't use the other tactics, Replenish, Ghost Drive or Dash yet (they do auto-use skills they have via `UnitBehavior.autoAbility`).
 - Saving is disabled in LAN games with more than one human.
 
 ## Ideas queued / possible next steps
-- Teach Hard / Insane bots to build a Command Center and use Bulldozer.
+- Let bots pick Pincer / Flank / Focus to counter what they face.
 - Show formation previews (slot markers) before confirming a tactical attack.

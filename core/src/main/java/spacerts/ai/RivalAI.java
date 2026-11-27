@@ -1,10 +1,15 @@
 package spacerts.ai;
 
+import spacerts.net.CommandExecutor;
 import spacerts.research.Tech;
+import spacerts.systems.TacticsSystem;
 import spacerts.units.Order;
 import spacerts.units.ShipClass;
+import spacerts.units.Tactic;
+import spacerts.units.TacticUpgrade;
 import spacerts.units.Unit;
 import spacerts.world.Body;
+import spacerts.world.Difficulty;
 import spacerts.world.Faction;
 import spacerts.world.World;
 
@@ -58,6 +63,7 @@ public class RivalAI {
         economy(ms);
         expansion(ms);
         research();
+        commandCenter();
         military(ms);
         command(ms);
     }
@@ -157,6 +163,12 @@ public class RivalAI {
         }
         if (w.time > 200 && (f.hub == null || f.hub.dead) && w.construction.building(f, ShipClass.HUB, null) == 0) {
             build(ShipClass.HUB, ms, null);
+            return;
+        }
+        // Hard and Insane bots add a Command Center once the Hub stands and the economy can spare it
+        if (usesTactics() && w.time > tacticsFrom() && f.hub != null && !f.hub.dead && f.canAfford(900, 900, NO_RARE)
+                && w.construction.baseBlocker(f, ShipClass.COMMAND) == null) {
+            build(ShipClass.COMMAND, ms, null);
             return;
         }
         if (w.time > 600 && f.canAfford(500, 700, NO_RARE)
@@ -277,6 +289,71 @@ public class RivalAI {
         }
     }
 
+    // ------------------------------------------------------------------ Command Center and tactics
+
+    /** Hard and Insane bots build a Command Center and fight their assaults as a Bulldozer. */
+    public boolean usesTactics() {
+        return f.difficulty.ordinal() >= Difficulty.HARD.ordinal();
+    }
+
+    /** Game time from which the bot starts on its Command Center. */
+    private float tacticsFrom() {
+        return f.difficulty == Difficulty.INSANE ? 540f : 720f;
+    }
+
+    /** Bulldozer formations need a long enough march to form up, at least a tank and this many ships. */
+    static final float TACTIC_MIN_MARCH = 1500f;
+    static final int TACTIC_MIN_SHIPS = 6;
+
+    /** Unlocks Bulldozer at the Command Center, keeps it active, and adds its upgrades once rich. */
+    private void commandCenter() {
+        if (!usesTactics()) return;
+        Unit cc = null;
+        for (Unit u : w.units)
+            if (!u.dead && u.owner == f && u.cls == ShipClass.COMMAND) { cc = u; break; }
+        if (cc == null || !cc.queue.items.isEmpty()) return;
+        if (!f.tactics.contains(Tactic.BULLDOZER)) {
+            if (f.canAfford(ShipClass.CC_BULLDOZER.s.energy + 150, ShipClass.CC_BULLDOZER.s.metal + 100, NO_RARE))
+                w.production.enqueue(cc, ShipClass.CC_BULLDOZER);
+            return;
+        }
+        f.activeTactic = Tactic.BULLDOZER;
+        if (f.energy > 2500 && f.metal > 2500) {
+            ShipClass up = !f.has(TacticUpgrade.SHIELD_WALL) ? ShipClass.CC_SHIELD_WALL : !f.has(TacticUpgrade.RAM) ? ShipClass.CC_RAM : null;
+            if (up != null) w.production.enqueue(cc, up);
+        }
+    }
+
+    /**
+     * Starts a Bulldozer toward the assault target with the grouped ships around the leader, when the bot can:
+     * a Command Center, Bulldozer active, no formation already out, and a target far enough away to form up.
+     */
+    private void tacticalLaunch(Unit lead) {
+        if (!usesTactics() || f.activeTactic != Tactic.BULLDOZER || !CommandExecutor.hasCommandCenter(w, f)) return;
+        if (lead.dist(assaultX, assaultY) < TACTIC_MIN_MARCH) return;
+        for (Unit u : army) if (u.formation != 0) return;
+        List<Unit> members = new ArrayList<>();
+        int tanks = 0;
+        for (Unit u : army) {
+            if (u.target != null || u.cls == ShipClass.DEFENDER || u.cls == ShipClass.DRONE || u.s.stationary) continue;
+            TacticsSystem.Role r = TacticsSystem.role(u.cls);
+            if (!TacticsSystem.uses(Tactic.BULLDOZER, r) || u.dist(lead) > 1200) continue;
+            members.add(u);
+            if (r == TacticsSystem.Role.TANK) tanks++;
+        }
+        if (tanks == 0 || members.size() < TACTIC_MIN_SHIPS) return;
+        f.hasTacticTarget = true;
+        f.tacticX = assaultX;
+        f.tacticY = assaultY;
+        w.tactics.start(f, Tactic.BULLDOZER, members, assaultX, assaultY);
+    }
+
+    /** A direct order from the bot; it takes the ship out of any tactic formation first. */
+    private static void order(Unit u, Order o, float x, float y) {
+        u.formation = 0;
+        u.command(o, x, y);
+    }
+
     private float armyPower() {
         float p = 0;
         for (Unit u : army) p += u.power();
@@ -343,14 +420,14 @@ public class RivalAI {
         boolean homeThreat = w.time - f.lastAttackedTime < 6 && Math.hypot(f.lastAttackX - ms.x, f.lastAttackY - ms.y) < 3500;
         if (homeThreat && mode != Mode.DEFEND && (mode != Mode.ASSAULT || power < 10)) {
             mode = Mode.DEFEND;
-            for (Unit u : army) u.command(Order.ATTACK_MOVE, f.lastAttackX, f.lastAttackY);
+            for (Unit u : army) order(u, Order.ATTACK_MOVE, f.lastAttackX, f.lastAttackY);
             return;
         }
         switch (mode) {
             case DEFEND:
                 if (w.time - f.lastAttackedTime > 15) {
                     mode = Mode.BUILDUP;
-                    for (Unit u : army) u.command(Order.MOVE, rx, ry);
+                    for (Unit u : army) order(u, Order.MOVE, rx, ry);
                 } else {
                     for (Unit u : army) if (u.order == Order.IDLE) u.command(Order.ATTACK_MOVE, f.lastAttackX, f.lastAttackY);
                 }
@@ -370,7 +447,7 @@ public class RivalAI {
             case ASSAULT:
                 if (power < assaultStartPower * 0.35f) {
                     mode = Mode.BUILDUP;
-                    for (Unit u : army) u.command(Order.MOVE, rx, ry);
+                    for (Unit u : army) order(u, Order.MOVE, rx, ry);
                     break;
                 }
                 if (w.time < launchAt) { // warned the player; gathering at the rally point before moving out
@@ -382,7 +459,7 @@ public class RivalAI {
                 if (done) {
                     if (!pickAssault(ms)) {
                         mode = Mode.BUILDUP;
-                        for (Unit u : army) u.command(Order.MOVE, rx, ry);
+                        for (Unit u : army) order(u, Order.MOVE, rx, ry);
                         break;
                     }
                     float delay = warn(army.size());
@@ -412,8 +489,9 @@ public class RivalAI {
         int together = 0;
         for (Unit u : army) if (u.dist(lead) < 900) together++;
         boolean grouped = together >= army.size() * 0.7f || lead.dist(assaultX, assaultY) < 1800;
+        if (grouped) tacticalLaunch(lead); // Hard / Insane: the grouped core marches in as a Bulldozer
         for (Unit u : army) {
-            if (u.target != null) continue; // already fighting
+            if (u.target != null || u.formation != 0) continue; // already fighting, or the formation drives it
             if (grouped) {
                 boolean onTarget = u.order == Order.ATTACK_MOVE && Math.hypot(u.tx - assaultX, u.ty - assaultY) < 400;
                 if (!onTarget) u.command(Order.ATTACK_MOVE, assaultX + w.rng.nextFloat() * 160 - 80, assaultY + w.rng.nextFloat() * 160 - 80);

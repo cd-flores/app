@@ -5,6 +5,18 @@ dependencies {
 }
 
 test {
-    useJUnitPlatform()
+    useJUnitPlatform { excludeTags 'stress' }
+    testLogging { events 'passed', 'failed'; showStandardStreams = true; exceptionFormat = 'full' }
+}
+
+// How many ships fit in the 33 ms tick budget: gradlew :core:stressTest (see StressTest)
+tasks.register('stressTest', Test) {
+    description = 'Times the simulation with more and more ships.'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform { includeTags 'stress' }
+    maxHeapSize = '4g'
+    outputs.upToDateWhen { false }
     testLogging { events 'passed', 'failed'; showStandardStreams = true; exceptionFormat = 'full' }
 }

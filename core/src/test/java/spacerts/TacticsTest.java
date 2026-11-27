@@ -491,4 +491,68 @@ class TacticsTest {
         }
         assertEquals(Lockstep.checksum(a), Lockstep.checksum(b));
     }
+
+    // ------------------------------------------------------------------ bots
+
+    /** A rich rival bot with a Research Hub, at a game time where it may start on tactics. */
+    private static World botWorld(Difficulty d) {
+        World w = new World(GameSetup.skirmish(91, 1, d));
+        GalaxyGenerator.generate(w);
+        w.flushPending();
+        Faction r = rival(w);
+        spawn(w, ShipClass.HUB, r, r.mothership.x - 500, r.mothership.y);
+        r.energy = 30000;
+        r.metal = 30000;
+        w.time = 800;
+        return w;
+    }
+
+    @Test
+    void hardBotsBuildACommandCenterAndUnlockBulldozer() {
+        World w = botWorld(Difficulty.HARD);
+        Faction r = rival(w);
+        assertTrue(r.ai.usesTactics());
+        run(w, 240);
+        assertEquals(1, w.count(r, ShipClass.COMMAND), "built one Command Center");
+        assertTrue(r.tactics.contains(Tactic.BULLDOZER), "unlocked Bulldozer");
+        assertEquals(Tactic.BULLDOZER, r.activeTactic);
+        assertTrue(r.has(TacticUpgrade.SHIELD_WALL), "rich enough for the Shield Wall upgrade");
+    }
+
+    @Test
+    void normalBotsLeaveTacticsAlone() {
+        World w = botWorld(Difficulty.NORMAL);
+        Faction r = rival(w);
+        assertFalse(r.ai.usesTactics());
+        run(w, 240);
+        assertEquals(0, w.count(r, ShipClass.COMMAND));
+        assertTrue(r.tactics.isEmpty());
+    }
+
+    @Test
+    void hardBotAssaultsMarchAsABulldozer() {
+        World w = botWorld(Difficulty.HARD);
+        Faction r = rival(w);
+        Unit ms = r.mothership;
+        spawn(w, ShipClass.COMMAND, r, ms.x + 500, ms.y);
+        r.tactics.add(Tactic.BULLDOZER);
+        r.activeTactic = Tactic.BULLDOZER;
+        for (int i = 0; i < 4; i++) spawn(w, ShipClass.BULWARK, r, ms.x + 300 + i * 60, ms.y + 300);
+        for (int i = 0; i < 12; i++) spawn(w, ShipClass.LANCER, r, ms.x + 200 + i * 30, ms.y + 400);
+        for (int i = 0; i < 4; i++) spawn(w, ShipClass.LONGBOW, r, ms.x + 300 + i * 50, ms.y + 480);
+        Formation fm = null;
+        for (int i = 0; i < (int) (120 / Lockstep.STEP) && fm == null; i++) {
+            w.update(Lockstep.STEP);
+            for (Formation f : w.tactics.formations) if (f.f == r) fm = f;
+        }
+        assertNotNull(fm, "the assault formed up");
+        assertEquals(Tactic.BULLDOZER, fm.tactic);
+        assertTrue(fm.members.size() >= 6, "the grouped core joined, had " + fm.members.size());
+        // the bot leaves its formation alone while it marches
+        int size = fm.members.size();
+        run(w, 3);
+        assertTrue(w.tactics.formations.contains(fm), "still marching");
+        assertEquals(size, fm.members.size(), "no ship was pulled out by the bot");
+        for (Member m : fm.members) assertEquals(fm.id, m.u.formation);
+    }
 }

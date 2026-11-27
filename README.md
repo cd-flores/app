@@ -7,6 +7,7 @@ An endless space RTS built with Java and libGDX. All graphics are drawn shapes, 
 - Double-click `run.bat`, or run `gradlew.bat lwjgl3:run`.
 - `gradlew.bat lwjgl3:dist` builds a standalone `lwjgl3/build/libs/NebulaDominion.jar`. Run it with `java -jar NebulaDominion.jar`.
 - `gradlew.bat test` runs headless simulation tests, including a 40-minute game and a save/load round trip.
+- `gradlew.bat :core:stressTest` measures how many ships the game logic handles in its 33 ms per-update budget (about 10,000 units in one big battle, 19,000 spread out, on the dev PC).
 
 Requires a JDK (17 or newer; developed on 25). The first build downloads Gradle and libGDX.
 
@@ -146,7 +147,7 @@ Requires a JDK (17 or newer; developed on 25). The first build downloads Gradle 
   | Army size before a bot attacks | much bigger | a bit bigger | smaller | smallest |
   | Pirate waves | 65% | 90% | 120% | 150% |
   | Warning before a bot fleet moves on you | 20 s | 20 s | none (still announced) | none (still announced) |
-  | Other | Humans start with +400/+400 and 3 extra Lancers; bots hit your colonies before your Mothership | | Bots focus fire | Bots focus fire |
+  | Other | Humans start with +400/+400 and 3 extra Lancers; bots hit your colonies before your Mothership | | Bots focus fire; they build a Command Center and attack as a Bulldozer | Bots focus fire; they build a Command Center and attack as a Bulldozer |
 
 - **Auto-defense** (on by default, toggle with **G** or the top-bar button):
   - Idle warships near a base attack enemies that come within range of your colonies, factories, hub or Mothership, sending about twice the threat's strength. They return to their post afterwards.
