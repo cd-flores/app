@@ -109,6 +109,7 @@ public class CombatSystem {
         }
         if (t.martyrTarget != null) return; // Martyr Charge: already on its last run
         if (src != null && src.owner.godMode) { // ...and everything it shoots dies in one hit
+            t.lastAttacker = src.owner;
             t.shield = 0;
             if (w.tactics.martyr(t)) return;
             t.hp = 0;
@@ -129,6 +130,10 @@ public class CombatSystem {
                 break;
             }
         t.lastHit = w.time;
+        if (src != null && src.owner != t.owner) { // match stats: damage actually taken, and who gets the kill
+            src.owner.stats.damageDealt += Math.min(dmg, Math.max(0f, t.hp) + Math.max(0f, t.shield));
+            t.lastAttacker = src.owner;
+        }
         if (src != null && t.owner.kind == Faction.Kind.NATIVES && t.home != null) t.home.provoke(src.owner, w.time); // the planet fights back now
         if (t.shield > 0) {
             float absorbed = Math.min(t.shield, dmg);

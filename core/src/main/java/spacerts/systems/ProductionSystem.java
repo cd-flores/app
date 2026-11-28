@@ -112,6 +112,7 @@ public class ProductionSystem {
             float sx = p.x + (float) Math.cos(a) * (p.radius + c.s.radius + 6);
             float sy = p.y + (float) Math.sin(a) * (p.radius + c.s.radius + 6);
             Unit u = w.spawn(c, f, sx, sy);
+            if (!c.s.internal) f.stats.shipsBuilt++;
             if (replenishing) {
                 u.command(Order.ATTACK_MOVE, f.tacticX + (float) Math.cos(u.id) * 40, f.tacticY + (float) Math.sin(u.id) * 40);
                 continue;
@@ -306,7 +307,7 @@ public class ProductionSystem {
                 mine.add(u);
                 oldMax.add(u.maxHp());
             }
-        f.techs.add(t);
+        if (f.techs.add(t)) f.stats.techs++;
         if (f.researching == t) {
             f.researching = null;
             f.researchProgress = 0;

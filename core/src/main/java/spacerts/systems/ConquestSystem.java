@@ -30,8 +30,7 @@ public class ConquestSystem {
             recount();
         }
         if (owned > 0) {
-            w.player.energy += owned * HEX_INCOME * dt;
-            w.player.metal += owned * HEX_INCOME * dt;
+            w.player.earn(owned * HEX_INCOME * dt, owned * HEX_INCOME * dt);
         }
     }
 

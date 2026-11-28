@@ -65,6 +65,8 @@ public final class SaveManager {
         public String researching, researching2;
         /** Race name; missing in older saves (then the original roster). */
         public String race;
+        /** End-of-match totals; missing in older saves (then zeros). */
+        public spacerts.world.MatchStats stats;
         public boolean eliminated, hasFlag, autoDefenseOff, rallyStations;
         /** Cheat state (single player). */
         public boolean cheatsUnlocked, cheatsUsed, godMode, noFog, warpTen, fastResearch, synergy, noHousing, noCooldowns, fastDecay, noDefeat;
@@ -183,6 +185,7 @@ public final class SaveManager {
             fd.researching2 = f.researching2 != null ? f.researching2.name() : null;
             fd.researchProgress2 = f.researchProgress2;
             fd.race = f.race.name();
+            fd.stats = f.stats;
             fd.eliminated = f.eliminated;
             fd.hasFlag = f.hasFlag;
             fd.autoDefenseOff = !f.autoDefense;
@@ -386,6 +389,7 @@ public final class SaveManager {
             f.researching2 = fd.researching2 != null ? Tech.valueOf(fd.researching2) : null;
             f.researchProgress2 = fd.researchProgress2;
             f.race = spacerts.units.Race.named(fd.race);
+            if (fd.stats != null) f.stats = fd.stats;
             f.eliminated = fd.eliminated;
             f.hasFlag = fd.hasFlag;
             f.autoDefense = !fd.autoDefenseOff;

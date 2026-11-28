@@ -163,6 +163,11 @@ public class World {
     public void update(float dt) {
         if (matchOver) return; // the match is decided: everything stops
         time += dt;
+        statsTimer -= dt;
+        if (statsTimer <= 0) {
+            statsTimer += 1f;
+            sampleArmies();
+        }
         galaxy.indexBodies(bodies);
         hash.rebuild(units);
 
@@ -447,7 +452,31 @@ public class World {
         bodies.add(b);
     }
 
+    private float statsTimer;
+
+    /** Match stats: the cost of every major empire's living warships. */
+    private void sampleArmies() {
+        for (Faction f : factions) if (f.isMajor()) f.stats.armyNow = 0;
+        for (Unit u : units)
+            if (!u.dead && u.owner.isMajor() && u.cls.isWarship() && u.cls != ShipClass.DRONE)
+                u.owner.stats.armyNow += (u.s.energy + u.s.metal) / (double) u.s.squad;
+        for (Faction f : factions) if (f.isMajor()) f.stats.sampleArmy(f.stats.armyNow);
+    }
+
+    /** Match stats for a death: the owner's loss and, if an enemy did it, that enemy's kill. Wiped-out empires stop counting. */
+    private void countDeath(Unit u) {
+        if (u.silent || u.s.internal || u.cls == ShipClass.DRONE || u.owner.eliminated) return;
+        boolean structure = u.cls.isBuilding() || u.cls == ShipClass.COLONY;
+        if (structure) u.owner.stats.structuresLost++;
+        else u.owner.stats.shipsLost++;
+        Faction by = u.lastAttacker;
+        if (by == null || !by.hostileTo(u.owner)) return;
+        if (structure) by.stats.structuresDestroyed++;
+        else by.stats.kills++;
+    }
+
     private void handleDeath(Unit u) {
+        countDeath(u);
         if (!u.silent) {
             float size = Math.max(u.radius * 2.5f, 30f);
             blast(u.x, u.y, size, u.owner.color);
@@ -552,6 +581,7 @@ public class World {
     public void eliminate(Faction f) {
         if (f.eliminated) return;
         f.eliminated = true;
+        f.stats.eliminatedAt = time;
         f.researching = null;
         f.researching2 = null;
         for (Unit o : units) if (o.owner == f && !o.dead) o.kill(false);
@@ -589,6 +619,7 @@ public class World {
 
     public void colonize(Body p, Faction f) {
         Unit c = spawn(ShipClass.COLONY, f, p.x, p.y);
+        f.stats.colonies++;
         c.radius = p.radius + 8;
         c.home = p;
         p.colony = c;
@@ -677,6 +708,7 @@ public class World {
             }
             if (amount <= 0) return 0;
             f.metal -= cost;
+            f.stats.metalSpent += cost;
             f.repairSpentTick += cost;
         }
         u.hp += amount;

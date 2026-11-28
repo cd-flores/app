@@ -29,14 +29,13 @@ public class EconomySystem {
                 Body star = u.home;
                 float got = star != null ? star.drainStar(solarRate(u) * dt) : solarRate(u) * dt;
                 if (got <= 0) continue; // its star has burnt out
-                u.owner.energy += got;
+                u.owner.earn(got, 0);
                 if (w.loot.nextFloat() < SOLAR_STAR_CHANCE / 60f * dt) w.grantRare(u.owner, RareItem.STAR_ESSENCE, 1, u.x, u.y);
             } else if (u.cls == ShipClass.MINER) mine(u, dt);
             else if (u.cls == ShipClass.COLONY && u.home != null && u.owner.isMajor()) {
                 float rate = colonyIncome(u.home) * incomeMult(u.owner);
                 launchBuoys(u, dt);
-                u.owner.energy += rate * dt;
-                u.owner.metal += rate * dt;
+                u.owner.earn(rate * dt, rate * dt);
             }
         }
         float decay = 1f;
@@ -203,7 +202,7 @@ public class EconomySystem {
             b.metal -= amt;
             if (b.metal <= 0.01f) b.dead = true;
         }
-        u.owner.metal += amt;
+        u.owner.earn(0, amt);
         if (b.kind == Body.Kind.ASTEROID && w.loot.nextFloat() < MINER_DARK_CHANCE / 60f * dt)
             w.grantRare(u.owner, RareItem.DARK_MATTER, 1, u.x, u.y);
     }
@@ -333,8 +332,8 @@ public class EconomySystem {
     /** Unloads a harvester's cargo; rivals get the difficulty's income multiplier. */
     private void deliver(Unit u) {
         float amt = u.cargo * incomeMult(u.owner);
-        if (u.cargoEnergy) u.owner.energy += amt;
-        else u.owner.metal += amt * refineryBonus(u);
+        if (u.cargoEnergy) u.owner.earn(amt, 0);
+        else u.owner.earn(0, amt * refineryBonus(u));
         // scarce finds turn up in a full-ish hold now and then
         if (u.cargo >= capacity(u) * 0.5f) {
             if (u.cargoEnergy && w.loot.nextFloat() < STAR_ESSENCE_CHANCE) w.grantRare(u.owner, RareItem.STAR_ESSENCE, 1, u.x, u.y);

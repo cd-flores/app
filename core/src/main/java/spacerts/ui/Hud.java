@@ -23,6 +23,7 @@ import spacerts.units.Unit;
 import spacerts.world.Body;
 import spacerts.world.Faction;
 import spacerts.world.Galaxy;
+import spacerts.world.MatchStats;
 import spacerts.world.Message;
 import spacerts.world.StarSystem;
 import spacerts.world.VisionGrid;
@@ -1509,13 +1510,15 @@ public class Hud {
     private boolean victoryDismissed;
 
     private void victory(ShapeRenderer sr, World w) {
-        float bw = 620, bh = 230;
+        float tw = statsWidth(), th = statsHeight(w);
+        float bw = Math.max(620, tw + 40), bh = 230 + th + 16;
         overlayBox(sr, bw, bh);
         float x = (W - bw) / 2, y = (H + bh) / 2;
         aligned(x, y - 30, bw, "ASCENSION", World.GOOD, 1.8f, Align.center);
         aligned(x, y - 80, bw, "The Ascension Gate is complete. The pirate clans are broken.", Color.WHITE, 1.05f, Align.center);
         aligned(x, y - 108, bw, "Conquered " + spacerts.systems.ConquestSystem.ownedCount(w) + " of " + w.galaxy.systems.size()
                 + " hexes in " + clock(w.time) + ".", DIM, 0.95f, Align.center);
+        statsTable(sr, w, (W - tw) / 2, y - 132);
         float bx = x + bw / 2 - 110, by = y - bh + 26, bW = 220, bH = 34;
         boolean hov = hovered(bx, by, bW, bH);
         sr.setColor(hov ? 0.15f : 0.08f, hov ? 0.4f : 0.28f, hov ? 0.25f : 0.18f, 1f);
@@ -1530,7 +1533,8 @@ public class Hud {
 
     /** The match is decided: victory (or who won), the match time, and what to do next. */
     private void matchResult(ShapeRenderer sr, World w) {
-        float bw = 560, bh = 230;
+        float tw = statsWidth(), th = statsHeight(w);
+        float bw = Math.max(560, tw + 40), bh = 230 + th + 16;
         overlayBox(sr, bw, bh);
         float x = (W - bw) / 2, y = (H + bh) / 2;
         Faction win = w.winner;
@@ -1538,17 +1542,125 @@ public class Hud {
         String who = win == null ? "Nobody" : win.team != 0 && w.countTeam(win.team) > 1 ? "Team " + win.team : win.name;
         aligned(x, y - 30, bw, won ? "VICTORY" : who.toUpperCase() + " HAS WON", won ? World.GOOD : World.ALERT, 1.6f, Align.center);
         aligned(x, y - 80, bw, (won ? "Every enemy empire has fallen. " : "") + "Match time " + clock(w.time) + ".", Color.WHITE, 1.05f, Align.center);
-        aligned(x, y - 140, bw, "Press Enter to return to the main menu", DIM, 1f, Align.center);
-        if (!gs.networked()) aligned(x, y - 170, bw, "Press C to keep playing", DIM, 1f, Align.center);
+        statsTable(sr, w, (W - tw) / 2, y - 110);
+        float by = y - 110 - th - 30;
+        aligned(x, by, bw, "Press Enter to return to the main menu", DIM, 1f, Align.center);
+        if (!gs.networked()) aligned(x, by - 30, bw, "Press C to keep playing", DIM, 1f, Align.center);
     }
 
     private void gameOver(ShapeRenderer sr, World w) {
-        float bw = 520, bh = 200;
+        float tw = statsWidth(), th = statsHeight(w);
+        float bw = Math.max(520, tw + 40), bh = 200 + th + 16;
         overlayBox(sr, bw, bh);
         float x = (W - bw) / 2, y = (H + bh) / 2;
         aligned(x, y - 30, bw, w.player.race.flagship.s.name.toUpperCase() + " DESTROYED", World.ALERT, 1.6f, Align.center);
         aligned(x, y - 80, bw, "You survived " + clock(w.time) + ".", Color.WHITE, 1.1f, Align.center);
-        aligned(x, y - 140, bw, "Press Enter to return to the main menu", DIM, 1f, Align.center);
+        statsTable(sr, w, (W - tw) / 2, y - 110);
+        aligned(x, y - 110 - th - 30, bw, "Press Enter to return to the main menu", DIM, 1f, Align.center);
+    }
+
+    // ---- end-of-match stats table
+
+    private static final String[] STAT_HEADS = {"Kills", "Structures\ndestroyed", "Ships\nbuilt", "Ships\nlost", "Damage", "Energy\ngathered",
+            "Metal\ngathered", "Spent", "Research", "Colonies", "Peak\narmy"};
+    /** For each column: true when the highest value is the best (ships lost: the lowest is). */
+    private static final boolean[] STAT_HIGH_BEST = {true, true, true, false, true, true, true, true, true, true, true};
+    private static final float STAT_NAME_W = 200, STAT_RESULT_W = 110, STAT_COL_W = 76, STAT_ROW_H = 24, STAT_HEAD_H = 40;
+    private static final Color STAT_BEST = new Color(1f, 0.92f, 0.55f, 1f);
+
+    /** Table scale: full size when it fits, smaller on narrow windows. */
+    private float statsScale() {
+        float full = STAT_NAME_W + STAT_RESULT_W + STAT_COL_W * STAT_HEADS.length;
+        return Math.max(0.55f, Math.min(1f, (W - 60) / full));
+    }
+
+    private float statsWidth() {
+        return (STAT_NAME_W + STAT_RESULT_W + STAT_COL_W * STAT_HEADS.length) * statsScale();
+    }
+
+    private float statsHeight(World w) {
+        return (STAT_HEAD_H + STAT_ROW_H * statsRows(w).size()) * statsScale();
+    }
+
+    /** Every major empire: winners first, then those still in, then the fallen (last to fall first). */
+    private List<Faction> statsRows(World w) {
+        List<Faction> rows = new ArrayList<>();
+        for (Faction f : w.factions) if (f.isMajor()) rows.add(f);
+        rows.sort((a, b) -> {
+            int ra = statsRank(w, a), rb = statsRank(w, b);
+            if (ra != rb) return Integer.compare(ra, rb);
+            if (a.eliminated && b.eliminated) return Float.compare(b.stats.eliminatedAt, a.stats.eliminatedAt);
+            return Integer.compare(a.id, b.id);
+        });
+        return rows;
+    }
+
+    private static int statsRank(World w, Faction f) {
+        if (f.eliminated) return 2;
+        return w.matchOver && w.winner != null && !f.hostileTo(w.winner) ? 0 : 1;
+    }
+
+    private static String statsResult(World w, Faction f) {
+        if (f.eliminated) return "Out " + clock(Math.max(0, f.stats.eliminatedAt));
+        if (w.ascended && f == w.player) return "Ascended";
+        return statsRank(w, f) == 0 ? "Won" : "Alive";
+    }
+
+    private static double[] statsValues(MatchStats s) {
+        return new double[]{s.kills, s.structuresDestroyed, s.shipsBuilt, s.shipsLost, s.damageDealt, s.energyGathered, s.metalGathered,
+                s.spent(), s.techs, s.colonies, s.peakArmy};
+    }
+
+    /** 950, 12.4k, 3.1M. */
+    static String compact(double v) {
+        double a = Math.abs(v);
+        if (a < 1000) return String.valueOf((long) Math.floor(v + 0.0001));
+        if (a < 1e6) return String.format(java.util.Locale.ROOT, a < 1e4 ? "%.1fk" : "%.0fk", v / 1e3);
+        if (a < 1e9) return String.format(java.util.Locale.ROOT, a < 1e7 ? "%.1fM" : "%.0fM", v / 1e6);
+        return String.format(java.util.Locale.ROOT, "%.1fB", v / 1e9);
+    }
+
+    /** The stats table with its top-left corner at (x, top). */
+    private void statsTable(ShapeRenderer sr, World w, float x, float top) {
+        float k = statsScale();
+        float nameW = STAT_NAME_W * k, resW = STAT_RESULT_W * k, colW = STAT_COL_W * k, rowH = STAT_ROW_H * k, headH = STAT_HEAD_H * k;
+        float tw = statsWidth();
+        List<Faction> rows = statsRows(w);
+        // best value in each column
+        double[] best = new double[STAT_HEADS.length];
+        for (int c = 0; c < best.length; c++) best[c] = STAT_HIGH_BEST[c] ? -Double.MAX_VALUE : Double.MAX_VALUE;
+        for (Faction f : rows) {
+            double[] v = statsValues(f.stats);
+            for (int c = 0; c < v.length; c++) best[c] = STAT_HIGH_BEST[c] ? Math.max(best[c], v[c]) : Math.min(best[c], v[c]);
+        }
+        // header band and alternating row bands
+        sr.setColor(0.07f, 0.11f, 0.22f, 1f);
+        sr.rect(x, top - headH, tw, headH);
+        for (int i = 0; i < rows.size(); i++) {
+            float ry = top - headH - (i + 1) * rowH;
+            if (rows.get(i) == w.player) sr.setColor(0.1f, 0.17f, 0.3f, 1f);
+            else sr.setColor(i % 2 == 0 ? 0.045f : 0.06f, i % 2 == 0 ? 0.075f : 0.095f, i % 2 == 0 ? 0.16f : 0.19f, 1f);
+            sr.rect(x, ry, tw, rowH);
+        }
+        float hs = 0.72f * k, rs = 0.88f * k;
+        aligned(x + 8 * k, top - 14 * k, nameW, "Empire", DIM, hs, Align.left);
+        aligned(x + nameW, top - 14 * k, resW, "Result", DIM, hs, Align.center);
+        for (int c = 0; c < STAT_HEADS.length; c++)
+            aligned(x + nameW + resW + c * colW, top - 8 * k, colW, STAT_HEADS[c], DIM, hs, Align.center);
+        for (int i = 0; i < rows.size(); i++) {
+            Faction f = rows.get(i);
+            float ty = top - headH - i * rowH - 5 * k;
+            String name = f.name + (f == w.player ? " (you)" : "");
+            if (f.kind == Faction.Kind.RIVAL) name += " [" + f.difficulty.title + "]";
+            aligned(x + 8 * k, ty, nameW - 10 * k, name, f.color, rs, Align.left);
+            int rank = statsRank(w, f);
+            aligned(x + nameW, ty, resW, statsResult(w, f), rank == 0 ? World.GOOD : rank == 2 ? World.ALERT : Color.WHITE, rs, Align.center);
+            double[] v = statsValues(f.stats);
+            for (int c = 0; c < v.length; c++) {
+                boolean top1 = rows.size() > 1 && v[c] == best[c] && (STAT_HIGH_BEST[c] ? v[c] > 0 : true);
+                aligned(x + nameW + resW + c * colW, ty, colW, compact(v[c]), top1 ? STAT_BEST : Color.WHITE, rs, Align.center);
+            }
+        }
     }
 
     private void drawTooltip(ShapeRenderer sr) {

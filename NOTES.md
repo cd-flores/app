@@ -4,7 +4,7 @@ Context for picking this project up on another computer. The README describes th
 
 ## Status
 - Branch: `feature/hive-galaxy` (not merged into `main` yet).
-- Build and tests: `./gradlew :core:test --offline` (158 tests). Run the game with `./gradlew lwjgl3:run` (or `run.bat`).
+- Build and tests: `./gradlew :core:test --offline` (165 tests, all passing). Run the game with `./gradlew lwjgl3:run` (or `run.bat`).
 - Java 17+, libGDX (LWJGL3 desktop). There is no Python on the original machine, so edits were made by hand or with sed/awk.
 
 ## Ground rules of the codebase
@@ -63,6 +63,10 @@ Context for picking this project up on another computer. The README describes th
     - `Faction.race` (from `GameSetup.Slot.race`, sent in the lobby setup, saved as `FactionData.race`; older saves load as COALITION). `Protocol.VERSION` 8.
     - `ShipClass.buildList(Race)` replaces the old global lists. Role checks use `ShipClass.isFlagship()` / `isBuilder()` (`Spec.flagship()` / `builder()`) instead of `== MOTHERSHIP` / `== HARVESTER`; the starting fleet, colony harvesters and the bot's worker/scout come from the race.
     - To add a race: new ships in `ShipClass` (one marked `.flagship()`, one `.builder()`), a constant at the END of `Race` with its lists, `TacticsSystem.role` lines, `WorldRenderer` shapes, and a race pick in the lobby (`MenuScreen`; there's none yet since only one race exists). Still shared by every race: the tech tree, the structure roster, the Mothership tier upgrades (`MS_TIER_2/3`) and Warp Jump.
+
+17. **End-of-match stats** (`MatchStatsTest`): `world/MatchStats` per `Faction.stats`, saved in `FactionData.stats`. Counted on every machine and only read by the HUD, so nothing goes over the network.
+    - Income goes through `Faction.earn` (gathered); `pay` / `refund` and repair metal track spent. Kills: `CombatSystem.applyDamage` records `Unit.lastAttacker` and damage dealt; `World.countDeath` credits kills and losses (silent deaths, drones and empires already wiped out don't count). `World.sampleArmies` once per game second (army value, peak).
+    - `Hud.statsTable` draws it on `matchResult`, `gameOver` and `victory`; it scales down on narrow windows.
 
 ## Performance (stress test)
 - `./gradlew :core:stressTest --offline` (`StressTest`, tagged `stress`, left out of `test`) times `World.update` with more and more near-unkillable ships and writes `core/build/reports/stress/stress-*.csv`. It asserts only correctness (no NaN), never speed.

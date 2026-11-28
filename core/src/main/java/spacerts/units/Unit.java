@@ -39,6 +39,8 @@ public class Unit {
     public float burnTime, burnDps;
     /** Warp Jump: seconds left moving at (at least) scout speed. */
     public float sprintTimer;
+    /** The empire that last damaged this unit (credited with the kill). */
+    public spacerts.world.Faction lastAttacker;
     /** Evasive Dash (snipers): sliding backward at (dashVx, dashVy) while > 0. */
     public float dashTimer, dashVx, dashVy;
     public float tauntTimer, forcedTimer;

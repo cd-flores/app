@@ -240,6 +240,7 @@ public class ConstructionSystem {
         h.buildCls = null;
         h.buildBody = null;
         h.work = 0;
+        f.stats.structuresBuilt++;
         switch (c) {
             case HUB: {
                 Unit hub = w.spawn(ShipClass.HUB, f, x, y);

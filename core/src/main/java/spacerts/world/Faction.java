@@ -21,6 +21,8 @@ public class Faction {
     public Kind kind;
     /** Which roster this empire builds from (flagship, builder, build lists, bot army). */
     public spacerts.units.Race race = spacerts.units.Race.COALITION;
+    /** Totals for the end-of-match table. */
+    public MatchStats stats = new MatchStats();
 
     /** Stockpiles are doubles: endgame economies (giant asteroids, refinement) reach millions. */
     public double energy, metal;
@@ -175,15 +177,27 @@ public class Faction {
         return null;
     }
 
+    /** Income from mining, collectors, colonies and claimed hexes (counted as gathered). */
+    public void earn(double e, double m) {
+        energy += e;
+        metal += m;
+        stats.energyGathered += e;
+        stats.metalGathered += m;
+    }
+
     public void pay(int e, int m, int[] r) {
         energy -= e;
         metal -= m;
+        stats.energySpent += e;
+        stats.metalSpent += m;
         for (int i = 0; i < RareItem.COUNT; i++) rare[i] -= r[i];
     }
 
     public void refund(int e, int m, int[] r) {
         energy += e;
         metal += m;
+        stats.energySpent -= e;
+        stats.metalSpent -= m;
         for (int i = 0; i < RareItem.COUNT; i++) rare[i] += r[i];
     }
 }
