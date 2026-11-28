@@ -43,6 +43,23 @@ public class GameScreen extends ScreenAdapter implements Lockstep.Runner {
     private final List<Command> localCommands = new ArrayList<>();
     private boolean desyncShown;
 
+    // ---- save confirmation banner (real time, so it shows while paused or in the menu)
+    public static final float SAVED_SHOW = 2.5f;
+    private float savedFlash;
+    private String savedText = "";
+    private boolean savedOk;
+
+    /** Shows the banner: "Game saved" / "Autosaved" in green, a failure in red. */
+    public void flashSaved(String text, boolean ok) {
+        savedText = text;
+        savedOk = ok;
+        savedFlash = SAVED_SHOW;
+    }
+
+    public String savedBanner() {
+        return savedFlash > 0 ? savedText : null;
+    }
+
     // ---- LAN loading screen: the game is drawn (warming up) behind it until every machine is ready
     /** Frames drawn behind the loading screen before this machine reports ready. */
     public static final int LOAD_FRAMES = 90;
@@ -166,8 +183,10 @@ public class GameScreen extends ScreenAdapter implements Lockstep.Runner {
                     try {
                         SaveManager.autosave(world);
                         world.notify(world.player, "Autosaved.", World.INFO);
+                        flashSaved("Autosaved", true);
                     } catch (Exception e) {
                         world.notify(world.player, "Autosave failed: " + e.getMessage(), World.ALERT);
+                        flashSaved("Autosave failed", false);
                     }
                 }
             }
@@ -178,6 +197,40 @@ public class GameScreen extends ScreenAdapter implements Lockstep.Runner {
         renderer.render();
         hud.render();
         if (world.setup.mode == spacerts.world.GameSetup.Mode.MULTIPLAYER) empiresOverlay();
+        savedOverlay(delta);
+    }
+
+    /** The save confirmation: a banner near the top that fades out. */
+    private void savedOverlay(float delta) {
+        if (savedFlash <= 0) return;
+        savedFlash -= Math.min(delta, 0.1f);
+        float a = Math.min(1f, savedFlash / 0.6f); // fades over the last 0.6 s
+        float W = hudCam.viewportWidth, H = hudCam.viewportHeight;
+        com.badlogic.gdx.graphics.g2d.BitmapFont f = game.font;
+        f.getData().setScale(1.25f);
+        com.badlogic.gdx.graphics.g2d.GlyphLayout gl = new com.badlogic.gdx.graphics.g2d.GlyphLayout(f, savedText);
+        float bw = gl.width + 56, bh = 44, bx = (W - bw) / 2, by = H * 0.78f;
+        if (loadSr == null) loadSr = new com.badlogic.gdx.graphics.glutils.ShapeRenderer();
+        com.badlogic.gdx.Gdx.gl.glEnable(com.badlogic.gdx.graphics.GL20.GL_BLEND);
+        loadSr.setProjectionMatrix(hudCam.combined);
+        loadSr.begin(com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType.Filled);
+        loadSr.setColor(0.03f, 0.06f, 0.13f, 0.92f * a);
+        loadSr.rect(bx, by, bw, bh);
+        if (savedOk) loadSr.setColor(0.35f, 0.95f, 0.5f, a);
+        else loadSr.setColor(1f, 0.4f, 0.35f, a);
+        loadSr.rect(bx, by, bw, 2);
+        loadSr.rect(bx, by + bh - 2, bw, 2);
+        loadSr.rect(bx, by, 2, bh);
+        loadSr.rect(bx + bw - 2, by, 2, bh);
+        loadSr.end();
+        game.batch.setProjectionMatrix(hudCam.combined);
+        game.batch.begin();
+        if (savedOk) f.setColor(0.6f, 1f, 0.7f, a);
+        else f.setColor(1f, 0.6f, 0.55f, a);
+        f.draw(game.batch, savedText, bx, by + bh / 2 + gl.height / 2, bw, com.badlogic.gdx.utils.Align.center, false);
+        f.getData().setScale(1f);
+        f.setColor(1f, 1f, 1f, 1f);
+        game.batch.end();
     }
 
     /** LAN loading: draws the game underneath (warming up the renderer), reports ready, and covers it all with the loading screen. */
@@ -302,8 +355,10 @@ public class GameScreen extends ScreenAdapter implements Lockstep.Runner {
         try {
             SaveManager.save(world);
             world.notify(world.player, "Game saved.", World.GOOD);
+            flashSaved("Game saved  -  " + java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")), true);
         } catch (Exception e) {
             world.notify(world.player, "Save failed: " + e.getMessage(), World.ALERT);
+            flashSaved("Save failed", false);
         }
     }
 
@@ -322,6 +377,7 @@ public class GameScreen extends ScreenAdapter implements Lockstep.Runner {
             input.reset();
             centerOnMothership();
             world.notify(world.player, "Game loaded.", World.GOOD);
+            flashSaved("Game loaded", true);
             menuOpen = false;
         } catch (Exception e) {
             world.notify(world.player, "Load failed: " + e.getMessage(), World.ALERT);
