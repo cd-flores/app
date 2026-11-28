@@ -189,7 +189,8 @@ Requires a JDK (17 or newer; developed on 25). The first build downloads Gradle 
 | WASD, arrows, screen edges (also with the cursor on the title bar or just below the window), middle-drag | Pan |
 | Mouse wheel | Zoom |
 | Minimap click | Jump the camera there |
-| Space | Pause |
+| Space | Jump the camera to the selected ships; hold it to lock on and follow them |
+| P / Pause | Pause |
 | [ ] | Game speed |
 | F5 / F9 | Save / load (`nebula_dominion_save.json`) |
 | Esc | Menu |

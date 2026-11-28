@@ -264,7 +264,7 @@ public class GameScreen extends ScreenAdapter implements Lockstep.Runner {
         if (paused) {
             f.getData().setScale(1.4f);
             f.setColor(1f, 1f, 1f, 0.9f);
-            f.draw(game.batch, "PAUSED", 0, H * 0.68f, W, com.badlogic.gdx.utils.Align.center, false);
+            f.draw(game.batch, "PAUSED  (P to resume)", 0, H * 0.68f, W, com.badlogic.gdx.utils.Align.center, false);
         }
         f.getData().setScale(1f);
         game.batch.end();

@@ -393,7 +393,7 @@ public class Hud {
             String hint = "Left-click / drag: select     Right-click: move, attack, harvest, colonize, survey     Ctrl+Right-click: attack-move\n"
                     + "H: Mothership (harvesters)   F2: Ship Stations (warships)   V: rally stations   B: Research Hub   I: idle harvesters   Ctrl+A: all warships\n"
                     + "F: place rally flag (Shift+F removes)   Skills: Q Ping  E Ghost Drive  T Taunt  Z Dash  N Nova  O Overcharge   R: auto-retreat on/off   X: stop   C: center   Double-click: select all of a type\n"
-                    + "Select a Harvester to build Stations, the Hub and Repair Stations. Click a colony to upgrade it.   Space: pause   [ ]: speed   F5 / F9: save / load";
+                    + "Select a Harvester to build Stations, the Hub and Repair Stations. Click a colony to upgrade it.   Space: jump to selection (hold: follow)   P: pause   [ ]: speed   F5 / F9: save / load";
             wrap(x0, y - 26, x1 - x0, hint, DIM, 0.85f);
         }
     }
@@ -1328,7 +1328,7 @@ public class Hud {
                         + "THE BASICS\n"
                         + "  Left-click or drag to select. Right-click to move, attack, harvest, colonize or survey. Ctrl+Right-click: attack-move.\n"
                         + "  WASD, the arrow keys, the screen edges or a middle-drag pan the camera; the mouse wheel zooms; click the minimap to jump.\n"
-                        + "  Space pauses, [ and ] change the game speed, F5 / F9 save and load, Esc opens the menu, F1 shows this tutorial again.\n\n"
+                        + "  Space jumps the camera to the selected ships (hold it to follow them), P pauses, [ and ] change the game speed, F5 / F9 save and load, Esc opens the menu, F1 shows this tutorial again.\n\n"
                         + "Use the arrow keys, A / D, or the buttons below to turn the pages."});
         pages.add(new String[]{"Economy",
                 "  Harvesters (built by the Mothership) collect ENERGY from stars and METAL from asteroids, barren planets and WRECKS.\n"
@@ -1393,7 +1393,7 @@ public class Hud {
                         + "  1-9, 0, -, = build from the selected station / structure / harvester   U tier upgrade\n"
                         + "  Q E T Z N O skills   Y tactics on/off   K targeting   R auto-retreat   G auto-defense   V rally stations   F / Shift+F rally flag\n"
                         + "  X stop   C center on selection   J jump to the last alert   Tab galaxy map (Hive)\n"
-                        + "  Space pause   [ ] speed   F5 save   F9 load   Esc menu   F1 tutorial\n\n"
+                        + "  Space jump to selection (hold: follow)   P pause   [ ] speed   F5 save   F9 load   Esc menu   F1 tutorial\n\n"
                         + "Good luck, Commander. Press Enter or click Start to begin."});
         return pages.toArray(new String[0][]);
     }

@@ -98,6 +98,10 @@ public class GameInput extends InputAdapter {
     public void update(float dt) {
         if (gs.showHelp || chatOpen) return; // the tutorial and the chat box use the keyboard
         OrthographicCamera cam = gs.cam;
+        if (following() && jumpToSelection()) { // Space held: follow the selection, no panning
+            cam.update();
+            return;
+        }
         float speed = 900f * cam.zoom * dt;
         float dx = 0, dy = 0;
         if (Gdx.input.isKeyPressed(Input.Keys.W) || Gdx.input.isKeyPressed(Input.Keys.UP)) dy += speed;
@@ -130,6 +134,26 @@ public class GameInput extends InputAdapter {
         cam.position.x = Math.max(view.minX(), Math.min(view.maxX(), cam.position.x + dx));
         cam.position.y = Math.max(view.minY(), Math.min(view.maxY(), cam.position.y + dy));
         cam.update();
+    }
+
+    /** Centers the camera on the living selected units; false when nothing is selected. */
+    public boolean jumpToSelection() {
+        float cx = 0, cy = 0;
+        int n = 0;
+        for (Unit u : selected) {
+            if (u.dead) continue;
+            cx += u.x;
+            cy += u.y;
+            n++;
+        }
+        if (n == 0) return false;
+        moveCamera(cx / n, cy / n);
+        return true;
+    }
+
+    /** Space held: the camera stays locked on the selection. */
+    public boolean following() {
+        return !chatOpen && Gdx.input.isKeyPressed(Input.Keys.SPACE) && !selected.isEmpty();
     }
 
     public void moveCamera(float x, float y) {
@@ -573,7 +597,11 @@ public class GameInput extends InputAdapter {
         }
         switch (key) {
             case Input.Keys.F1: gs.showHelp = true; return true;
-            case Input.Keys.SPACE: gs.togglePause(); return true;
+            case Input.Keys.P:
+            case Input.Keys.PAUSE: gs.togglePause(); return true;
+            case Input.Keys.SPACE: // jump to the selection; holding it keeps the camera on them (see update)
+                if (!jumpToSelection()) w.notify(w.player, "Select ships first: Space jumps to them, hold it to follow.", World.INFO);
+                return true;
             case Input.Keys.LEFT_BRACKET: gs.changeSpeed(-1); return true;
             case Input.Keys.RIGHT_BRACKET: gs.changeSpeed(1); return true;
             case Input.Keys.F5: gs.save(); return true;
