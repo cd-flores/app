@@ -1,0 +1,13 @@
+# Gradle build output and caches
+.gradle/
+build/
+*/build/
+
+# Game saves (local to each player)
+nebula_dominion_save.json
+nebula_dominion_autosave.json
+
+# IDE
+.idea/
+*.iml
+.vscode/

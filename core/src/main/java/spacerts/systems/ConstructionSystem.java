@@ -15,22 +15,60 @@ import spacerts.world.World;
 public class ConstructionSystem {
     private final World w;
 
+    /** Most Ship Stations an empire may have (alive plus under construction). */
+    public static final int MAX_STATIONS = 2;
+    /** Extra Ship Stations a tier II+ Mothership allows. */
+    public static final int TIER2_STATIONS = 2;
+
+    /** Ship Stations f may have: 2, or 4 with a tier II+ Mothership. */
+    public static int maxStations(Faction f) {
+        return MAX_STATIONS + (f.msTier() >= 2 ? TIER2_STATIONS : 0);
+    }
+
+    /** Research Hubs f may have: 1, or 2 with a tier II+ Mothership. */
+    public static int maxHubs(Faction f) {
+        return f.msTier() >= 2 ? 2 : 1;
+    }
+
     public ConstructionSystem(World w) {
         this.w = w;
     }
 
     /** Reasons that don't depend on where the thing is built (tech, limits, housing), or null. */
     public String baseBlocker(Faction f, ShipClass c) {
-        if (c.s.tech != null && !f.has(c.s.tech)) return "Requires research";
-        if (c == ShipClass.HUB && ((f.hub != null && !f.hub.dead) || building(f, ShipClass.HUB, null) > 0))
-            return "Only one Research Hub allowed";
-        if (c.s.pop > 0 && f.popUsed + c.s.pop > f.popCap) return "Not enough housing - colonize habitable planets";
+        if (c.s.tech != null && !f.has(c.s.tech) && !f.synergy) return "Requires research";
+        if (c.s.hiveOnly && !w.galaxy.hive) return "Only in the Hive galaxy (pirates mode)";
+        if (c.s.msTier > f.msTier() && !f.synergy) return "Requires Mothership tier " + ProductionSystem.roman(c.s.msTier);
+        if (c == ShipClass.HUB && f.hubsAlive() + building(f, ShipClass.HUB, null) >= maxHubs(f))
+            return maxHubs(f) > 1 ? "At most 2 Research Hubs" : "Only one Research Hub (a second needs Mothership tier II)";
+        if (c == ShipClass.FACTORY && w.count(f, ShipClass.FACTORY) + building(f, ShipClass.FACTORY, null) >= maxStations(f))
+            return "At most " + maxStations(f) + " Ship Stations" + (maxStations(f) == MAX_STATIONS ? " (" + (MAX_STATIONS + TIER2_STATIONS) + " at Mothership tier II)" : "");
+        if (c == ShipClass.COMMAND && (w.count(f, ShipClass.COMMAND) > 0 || building(f, ShipClass.COMMAND, null) > 0))
+            return "Only one Command Center";
+        if (c == ShipClass.ASCENSION && (w.count(f, ShipClass.ASCENSION) > 0 || building(f, ShipClass.ASCENSION, null) > 0))
+            return "Only one Ascension Gate";
+        if (c.s.pop > 0 && f.popUsed + c.s.pop > f.popCap && !f.noHousing) return "Not enough housing - colonize habitable planets";
         return null;
+    }
+
+    /**
+     * The nearest harvester of f (not a barge) that isn't already building, preferring ones not fleeing a raid;
+     * used when an upgrade is ordered from the colony itself. Null if there is none.
+     */
+    public Unit nearestFreeBuilder(Faction f, Body site) {
+        Unit best = null;
+        float bd = Float.MAX_VALUE;
+        for (Unit u : w.units) {
+            if (u.dead || u.owner != f || !u.cls.isBuilder() || u.buildCls != null) continue;
+            float d = u.dist(site.x, site.y) + (u.fleeTimer > 0 ? 100000 : 0);
+            if (d < bd) { bd = d; best = u; }
+        }
+        return best;
     }
 
     /** Full check for a specific harvester / target, or null when the order is allowed. */
     public String blocker(Unit h, ShipClass c, Body body, float x, float y) {
-        if (h == null || h.dead || !h.s.harvester) return "Select a harvester to build";
+        if (h == null || h.dead || !h.cls.isBuilder()) return "Select a harvester to build";
         Faction f = h.owner;
         String base = baseBlocker(f, c);
         if (base != null) return base;
@@ -41,6 +79,7 @@ public class ConstructionSystem {
         }
         if (c == ShipClass.SOLAR) {
             if (body == null || body.dead || body.kind != Body.Kind.STAR) return "Solar Collectors must be built next to a star";
+            if (body.burntOut()) return body.name + " has burnt out";
             if (extractorsAt(body, ShipClass.SOLAR) >= SOLAR_PER_STAR) return body.name + " already has " + SOLAR_PER_STAR + " Solar Collectors";
         }
         if (c == ShipClass.MINER) {
@@ -49,8 +88,26 @@ public class ConstructionSystem {
             if (body.guarded()) return body.name + " is guarded - destroy its native turrets first";
             if (minerNear(body)) return "There is already a miner working here";
         }
+        if (c == ShipClass.BEACON || c == ShipClass.ASCENSION) {
+            spacerts.world.StarSystem s = w.systemAt(x, y);
+            if (c == ShipClass.BEACON) {
+                if (ConquestSystem.beaconIn(w, s) != null || buildingIn(f, ShipClass.BEACON, s)) return s.name + " already has a Claim Beacon";
+                if (ConquestSystem.strongholdIn(w, s) != null) return "Destroy the pirate stronghold in " + s.name + " first";
+            } else {
+                if (s.archetype != spacerts.world.SystemArchetype.CITADEL) return "The Ascension Gate must be built in the Citadel hex at the top of the hive";
+                Unit beacon = ConquestSystem.beaconIn(w, s);
+                if (beacon == null || beacon.owner != f) return "Conquer the Citadel hex first (destroy the Citadel, then build a Claim Beacon there)";
+            }
+        }
         if (c.needsSite()) return siteBlocker(f, x, y, c.s.radius);
         return null;
+    }
+
+    /** True if one of f's harvesters is already on its way to build c inside system s. */
+    private boolean buildingIn(Faction f, ShipClass c, spacerts.world.StarSystem s) {
+        for (Unit u : w.units)
+            if (!u.dead && u.owner == f && u.buildCls == c && w.systemAt(u.buildX, u.buildY) == s) return true;
+        return false;
     }
 
     public static final int SOLAR_PER_STAR = 2;
@@ -78,10 +135,10 @@ public class ConstructionSystem {
 
     /** Whether a structure of radius r can be placed at (x, y). */
     public String siteBlocker(Faction f, float x, float y, float r) {
-        if (x < r + 60 || y < r + 60 || x > World.SIZE - r - 60 || y > World.SIZE - r - 60) return "Too close to the edge of the map";
+        if (!w.systemAt(x, y).inside(x, y, r + 60)) return "Too close to the edge of the map";
         if (f.vision != null && !f.vision.isExplored(x, y)) return "Can't build in unexplored space";
         for (Body b : w.bodies)
-            if (!b.dead && Math.hypot(b.x - x, b.y - y) < b.radius + r + 60) return "Too close to " + (b.kind == Body.Kind.ASTEROID ? "an asteroid" : b.name);
+            if (!b.dead && !b.isWreck() && Math.hypot(b.x - x, b.y - y) < b.radius + r + 60) return "Too close to " + (b.kind == Body.Kind.ASTEROID ? "an asteroid" : b.name);
         for (Unit o : w.units)
             if (!o.dead && o.cls.isBuilding() && o.dist(x, y) < o.radius + r + 25) return "Too close to another structure";
         for (Unit o : w.units)
@@ -105,10 +162,7 @@ public class ConstructionSystem {
 
     /** Gives harvester h a construction order. Returns an error message or null on success. */
     public String order(Unit h, ShipClass c, Body body, float x, float y) {
-        if (c == ShipClass.MENDER) {
-            x = h.x;
-            y = h.y;
-        } else if (c.isPlanetUpgrade() && body != null) {
+        if (c.isPlanetUpgrade() && body != null) {
             x = body.x;
             y = body.y;
         } else if (c.isExtractor() && body != null) {
@@ -140,7 +194,6 @@ public class ConstructionSystem {
         ShipClass c = h.buildCls;
         if (c == null) return 0;
         if (c.isPlanetUpgrade() && h.buildBody != null) return h.buildBody.radius + 45;
-        if (c == ShipClass.MENDER) return 1e9f;
         return c.s.radius + 35;
     }
 
@@ -172,8 +225,8 @@ public class ConstructionSystem {
             h.stopDist = range - 15;
             return;
         }
-        h.work += dt * f.buildMult() / c.s.buildTime;
-        if (w.rng.nextFloat() < dt * 3f && c != ShipClass.MENDER)
+        h.work += dt * f.buildMult() * (f.warpTen ? 10f : 1f) / c.s.buildTime; // WarpTen cheat
+        if (w.rng.nextFloat() < dt * 3f)
             w.beam(h.x, h.y, h.buildX + w.rng.nextFloat() * 30 - 15, h.buildY + w.rng.nextFloat() * 30 - 15, f.color, 1.5f, 0.2f);
         if (h.work >= 1f) complete(h);
     }
@@ -187,6 +240,7 @@ public class ConstructionSystem {
         h.buildCls = null;
         h.buildBody = null;
         h.work = 0;
+        f.stats.structuresBuilt++;
         switch (c) {
             case HUB: {
                 Unit hub = w.spawn(ShipClass.HUB, f, x, y);
@@ -197,13 +251,13 @@ public class ConstructionSystem {
             case FACTORY: {
                 Unit fac = w.spawn(ShipClass.FACTORY, f, x, y);
                 w.ring(fac.x, fac.y, 150, f.color, 0.8f);
-                w.notify(f, "Ship Factory online. Select it to build warships (F2 cycles factories).", World.GOOD);
+                w.notify(f, "Ship Station online. Select it to build warships (F2 cycles stations).", World.GOOD);
                 break;
             }
             case MENDER: {
-                Unit m = w.spawn(ShipClass.MENDER, f, h.x + 30, h.y + 30);
-                w.ring(m.x, m.y, 80, f.color, 0.6f);
-                w.notify(f, "Mender repair station ready.", World.GOOD);
+                Unit m = w.spawn(ShipClass.MENDER, f, x, y);
+                w.ring(m.x, m.y, m.s.healRange, new com.badlogic.gdx.graphics.Color(0.4f, 1f, 0.5f, 1f), 0.8f);
+                w.notify(f, "Repair Station online: it repairs every ally within " + (int) m.s.healRange + ".", World.GOOD);
                 break;
             }
             case SOLAR:
@@ -219,7 +273,14 @@ public class ConstructionSystem {
             case DEF_SHIELD:
                 if (body != null && body.colonized() && body.colony.owner == f) upgradePlanet(body, f, c);
                 break;
-            default:
+            default: // the other placed structures: beacon, platform, refinery, sensor array, ion cannon, ascension gate
+                if (c.needsSite()) {
+                    Unit s = w.spawn(c, f, x, y);
+                    w.ring(s.x, s.y, s.radius * 4f, f.color, 0.8f);
+                    if (c == ShipClass.BEACON) w.notify(f, w.systemAt(x, y).name + " claimed!", World.GOOD);
+                    else if (c == ShipClass.ASCENSION) w.ascend(f, s);
+                    else w.notify(f, c.s.name + " online.", World.GOOD);
+                }
                 break;
         }
         h.idle();
@@ -234,7 +295,7 @@ public class ConstructionSystem {
             w.spawnPlanetTurrets(b, f, 0.7f + b.turretPoints * 0.5236f); // evenly between the tech pair at 0.7
         } else {
             b.shieldPoints++;
-            b.colony.shield += Body.SHIELD_PER_POINT; // the new layer comes online charged
+            b.colony.shield = Math.min(b.colony.maxShield(), b.colony.shield + Body.SHIELD_PER_POINT * Unit.DURABILITY * Unit.COLONY_SHIELD_MULT); // the new layer comes online charged
         }
         w.ring(b.x, b.y, b.radius * 2.2f, kind == ShipClass.DEF_SHIELD ? new com.badlogic.gdx.graphics.Color(0.4f, 0.75f, 1f, 1f) : f.color, 1f);
         w.notify(f, b.name + ": " + kind.s.name + " done - turrets " + b.turretPoints + ", shield " + b.shieldPoints

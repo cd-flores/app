@@ -1,10 +1,16 @@
 package spacerts.ai;
 
+import spacerts.net.CommandExecutor;
 import spacerts.research.Tech;
+import spacerts.systems.ConstructionSystem;
+import spacerts.systems.TacticsSystem;
 import spacerts.units.Order;
 import spacerts.units.ShipClass;
+import spacerts.units.Tactic;
+import spacerts.units.TacticUpgrade;
 import spacerts.units.Unit;
 import spacerts.world.Body;
+import spacerts.world.Difficulty;
 import spacerts.world.Faction;
 import spacerts.world.World;
 
@@ -32,7 +38,7 @@ public class RivalAI {
             Tech.HOUSING, Tech.SHIELDS, Tech.ENGINES, Tech.DEEP_MINING, Tech.SURVEY_DRILLS, Tech.AEGIS_TECH,
             Tech.PHANTOM_TECH, Tech.WEAPONS_2, Tech.ARMOR_2, Tech.HARVEST_2, Tech.RAPID_ASSEMBLY, Tech.PLANET_TURRETS,
             Tech.MS_ARMOR, Tech.MS_REPAIR, Tech.HUB_TIER_3, Tech.LEVIATHAN_TECH, Tech.NOVA_CANNON, Tech.SENSORS,
-            Tech.FLEET_COMMAND};
+            Tech.FLEET_COMMAND, Tech.SNIPER_DEFLECTORS, Tech.EMERGENCY_THRUSTERS, Tech.RAPID_REFIT};
 
     // lists rebuilt every think
     private final List<Unit> harvesters = new ArrayList<>(), army = new ArrayList<>(), colonyShips = new ArrayList<>(),
@@ -44,16 +50,29 @@ public class RivalAI {
         this.think = 1f + f.id * 0.37f;
     }
 
+    /** Bots sit completely still for the first eight minutes of a game. */
+    public static final float START_DELAY = 480f;
+
+    /** Colonies a bot may hold: COLONY_START at first, COLONY_STEP more every COLONY_PERIOD seconds, at most COLONY_MAX. */
+    public static final int COLONY_START = 3, COLONY_STEP = 2, COLONY_MAX = 14;
+    public static final float COLONY_PERIOD = 15 * 60f;
+
+    public int colonyLimit() {
+        return Math.min(COLONY_MAX, COLONY_START + COLONY_STEP * (int) (w.time / COLONY_PERIOD));
+    }
+
     public void update(float dt) {
+        if (w.time < START_DELAY) return;
         think -= dt;
         if (think > 0) return;
-        think = 1.5f;
+        think = f.difficulty.thinkInterval(); // easier bots make decisions less often
         Unit ms = f.mothership;
         if (ms == null || ms.dead) return;
         scan();
         economy(ms);
         expansion(ms);
         research();
+        commandCenter();
         military(ms);
         command(ms);
     }
@@ -67,7 +86,7 @@ public class RivalAI {
             else if (u.s.surveyor) surveyors.add(u);
             else if (u.cls == ShipClass.COLONY) colonies.add(u);
             else if (u.cls == ShipClass.OUTPOST) outposts.add(u);
-            else if (u.cls.isWarship()) army.add(u);
+            else if (u.cls.isWarship() && !u.retreating) army.add(u); // retreating ships repair before rejoining
             if (u.cls == ShipClass.FACTORY || u.cls == ShipClass.SHIPYARD) producers.add(u);
         }
     }
@@ -84,8 +103,17 @@ public class RivalAI {
 
     private void economy(Unit ms) {
         int target = Math.min(22, 6 + colonies.size() * 2 + (int) (w.time / 200f));
-        if (harvesters.size() + pending(ShipClass.HARVESTER) < target && ms.queue.items.size() < 3)
-            w.production.enqueue(ms, ShipClass.HARVESTER);
+        if (harvesters.size() + pending(f.race.worker) < target && ms.queue.items.size() < 3)
+            w.production.enqueue(ms, f.race.worker);
+        // a couple of Patrol Ships once the Mothership is tier II
+        if (ms.tier >= 2 && w.count(f, ShipClass.PATROL) + pending(ShipClass.PATROL) < 2 && ms.queue.items.size() < 3)
+            w.production.enqueue(ms, ShipClass.PATROL);
+        // Mining Barges once a factory is up: 1 + 1 per 3 colonies, at most 4
+        int barges = 0;
+        for (Unit h : harvesters) if (h.cls == ShipClass.BARGE) barges++;
+        Unit fac = leastBusy();
+        if (fac != null && fac.queue.items.size() < 2 && barges + pending(ShipClass.BARGE) < Math.min(4, 1 + colonies.size() / 3))
+            w.production.enqueue(fac, ShipClass.BARGE);
         for (Unit h : harvesters) if (h.order == Order.IDLE) w.economy.autoAssign(h);
     }
 
@@ -93,8 +121,8 @@ public class RivalAI {
         // colony ships
         Set<Body> claimed = new HashSet<>();
         for (Unit c : colonyShips) if (c.body != null) claimed.add(c.body);
-        boolean housingTight = f.popCap - f.popUsed < 8;
-        if ((housingTight || w.time > 120) && colonyShips.size() + pending(ShipClass.COLONY_SHIP) == 0 && colonies.size() < 14) {
+        boolean housingTight = f.popCap - f.popUsed < 15;
+        if ((housingTight || w.time > 120) && colonyShips.size() + pending(ShipClass.COLONY_SHIP) == 0 && colonies.size() < colonyLimit()) {
             Unit fac = leastBusy();
             if (fac != null && nearestColonizable(ms, claimed) != null) w.production.enqueue(fac, ShipClass.COLONY_SHIP);
         }
@@ -136,7 +164,7 @@ public class RivalAI {
         for (Unit p : producers) if (p.cls == ShipClass.FACTORY) factories++;
         factories += w.construction.building(f, ShipClass.FACTORY, null);
         // first factory right away, more as the empire grows
-        int wantFactories = Math.min(3, 1 + colonies.size() / 3 + (w.time > 900 ? 1 : 0));
+        int wantFactories = Math.min(ConstructionSystem.maxStations(f), 1 + colonies.size() / 3 + (w.time > 900 ? 1 : 0));
         if (factories == 0 || (factories < wantFactories && w.time > 420 && f.canAfford(600, 600, NO_RARE))) {
             Unit anchor = factories == 0 || colonies.isEmpty() ? ms : colonies.get(w.rng.nextInt(colonies.size()));
             build(ShipClass.FACTORY, anchor, null);
@@ -144,6 +172,18 @@ public class RivalAI {
         }
         if (w.time > 200 && (f.hub == null || f.hub.dead) && w.construction.building(f, ShipClass.HUB, null) == 0) {
             build(ShipClass.HUB, ms, null);
+            return;
+        }
+        // a second lab once the Mothership reaches tier II
+        if (ms.tier >= 2 && f.hubsAlive() == 1 && f.canAfford(1000, 1000, NO_RARE)
+                && w.construction.baseBlocker(f, ShipClass.HUB) == null) {
+            build(ShipClass.HUB, ms, null);
+            return;
+        }
+        // Hard and Insane bots add a Command Center once the Hub stands and the economy can spare it
+        if (usesTactics() && w.time > tacticsFrom() && f.hub != null && !f.hub.dead && f.canAfford(900, 900, NO_RARE)
+                && w.construction.baseBlocker(f, ShipClass.COMMAND) == null) {
+            build(ShipClass.COMMAND, ms, null);
             return;
         }
         if (w.time > 600 && f.canAfford(500, 700, NO_RARE)
@@ -182,7 +222,7 @@ public class RivalAI {
         }
         if (w.time > 300 && f.canAfford(400, 400, NO_RARE) && w.construction.building(f, ShipClass.MENDER, null) == 0) {
             int menders = 0;
-            for (Unit u : army) if (u.cls == ShipClass.MENDER) menders++;
+            menders = w.count(f, ShipClass.MENDER);
             if (menders < army.size() / 10) build(ShipClass.MENDER, ms, null);
         }
     }
@@ -254,7 +294,7 @@ public class RivalAI {
     }
 
     private void research() {
-        if (f.researching != null || f.hub == null || f.hub.dead) return;
+        if (spacerts.systems.ProductionSystem.freeLab(f) == 0) return; // both labs busy (or none standing)
         for (Tech t : RESEARCH_ORDER) {
             if (w.production.researchBlocker(f, t) != null) continue;
             if (f.canAfford(t.energy + 150, t.metal + 100, t.rare)) {
@@ -264,26 +304,120 @@ public class RivalAI {
         }
     }
 
+    // ------------------------------------------------------------------ Command Center and tactics
+
+    /** Hard and Insane bots build a Command Center and fight their assaults as a Bulldozer. */
+    public boolean usesTactics() {
+        return f.difficulty.ordinal() >= Difficulty.HARD.ordinal();
+    }
+
+    /** Game time from which the bot starts on its Command Center. */
+    private float tacticsFrom() {
+        return f.difficulty == Difficulty.INSANE ? 540f : 720f;
+    }
+
+    /** Bulldozer formations need a long enough march to form up, at least a tank and this many ships. */
+    static final float TACTIC_MIN_MARCH = 1500f;
+    static final int TACTIC_MIN_SHIPS = 6;
+
+    /** Unlocks Bulldozer at the Command Center, keeps it active, and adds its upgrades once rich. */
+    private void commandCenter() {
+        if (!usesTactics()) return;
+        Unit cc = null;
+        for (Unit u : w.units)
+            if (!u.dead && u.owner == f && u.cls == ShipClass.COMMAND) { cc = u; break; }
+        if (cc == null || !cc.queue.items.isEmpty()) return;
+        if (!f.tactics.contains(Tactic.BULLDOZER)) {
+            if (f.canAfford(ShipClass.CC_BULLDOZER.s.energy + 150, ShipClass.CC_BULLDOZER.s.metal + 100, NO_RARE))
+                w.production.enqueue(cc, ShipClass.CC_BULLDOZER);
+            return;
+        }
+        f.activeTactic = Tactic.BULLDOZER;
+        if (f.energy > 2500 && f.metal > 2500) {
+            ShipClass up = !f.has(TacticUpgrade.SHIELD_WALL) ? ShipClass.CC_SHIELD_WALL : !f.has(TacticUpgrade.RAM) ? ShipClass.CC_RAM : null;
+            if (up != null) w.production.enqueue(cc, up);
+        }
+    }
+
+    /**
+     * Starts a Bulldozer toward the assault target with the grouped ships around the leader, when the bot can:
+     * a Command Center, Bulldozer active, no formation already out, and a target far enough away to form up.
+     */
+    private void tacticalLaunch(Unit lead) {
+        if (!usesTactics() || f.activeTactic != Tactic.BULLDOZER || !CommandExecutor.hasCommandCenter(w, f)) return;
+        if (lead.dist(assaultX, assaultY) < TACTIC_MIN_MARCH) return;
+        for (Unit u : army) if (u.formation != 0) return;
+        List<Unit> members = new ArrayList<>();
+        int tanks = 0;
+        for (Unit u : army) {
+            if (u.target != null || u.cls == ShipClass.DEFENDER || u.cls == ShipClass.DRONE || u.s.stationary) continue;
+            TacticsSystem.Role r = TacticsSystem.role(u.cls);
+            if (!TacticsSystem.uses(Tactic.BULLDOZER, r) || u.dist(lead) > 1200) continue;
+            members.add(u);
+            if (r == TacticsSystem.Role.TANK) tanks++;
+        }
+        if (tanks == 0 || members.size() < TACTIC_MIN_SHIPS) return;
+        f.hasTacticTarget = true;
+        f.tacticX = assaultX;
+        f.tacticY = assaultY;
+        w.tactics.start(f, Tactic.BULLDOZER, members, assaultX, assaultY);
+    }
+
+    /** A direct order from the bot; it takes the ship out of any tactic formation first. */
+    private static void order(Unit u, Order o, float x, float y) {
+        u.formation = 0;
+        u.command(o, x, y);
+    }
+
     private float armyPower() {
         float p = 0;
         for (Unit u : army) p += u.power();
         return p;
     }
 
+    /** Warships alive (retreating ones too) plus warships waiting in production queues, counted per ship. */
+    public int warships() {
+        int n = 0;
+        for (Unit u : w.units) {
+            if (u.dead || u.owner != f) continue;
+            if (u.cls.isWarship()) n++;
+            if (u.queue != null)
+                for (ShipClass c : u.queue.items) if (c.isWarship()) n += c.s.squad;
+        }
+        return n;
+    }
+
+    /** True when the difficulty's ship cap stops this bot from building more warships. */
+    public boolean atShipCap() {
+        int cap = f.difficulty.shipCap;
+        return cap >= 0 && warships() >= cap;
+    }
+
     private void military(Unit ms) {
         if (f.energy < 250 && f.metal < 250) return;
+        if (atShipCap()) return;
         // keep housing free for a colony ship while there are worlds left to settle, or expansion stalls
-        if (f.popCap - f.popUsed <= 4 && colonyShips.isEmpty() && colonies.size() < 14
+        if (f.popCap - f.popUsed <= 4 && colonyShips.isEmpty() && colonies.size() < colonyLimit()
                 && nearestColonizable(ms, new HashSet<>()) != null) return;
+        // Hard and Insane bots guard a tier II Mothership with up to 2 Defenders once they are rich
+        if (f.difficulty.ordinal() >= spacerts.world.Difficulty.HARD.ordinal() && ms.tier >= 2 && f.energy > 4000 && f.metal > 4500
+                && w.count(f, ShipClass.DEFENDER) + pending(ShipClass.DEFENDER) < 2 && ms.queue.items.size() < 3
+                && w.production.enqueue(ms, ShipClass.DEFENDER) == null) return;
         Unit p = leastBusy();
         if (p == null || p.queue.items.size() >= 3) return;
         // capital ship first when available
-        if (f.has(Tech.LEVIATHAN_TECH) && w.production.enqueue(p, ShipClass.LEVIATHAN) == null) return;
+        if (f.race.botCapital != null && f.has(Tech.LEVIATHAN_TECH) && w.production.enqueue(p, f.race.botCapital) == null) return;
         int wisps = 0;
-        for (Unit u : army) if (u.cls == ShipClass.WISP) wisps++;
-        if (wisps < 2) { w.production.enqueue(p, ShipClass.WISP); return; }
-        ShipClass[] pool = {ShipClass.LANCER, ShipClass.LANCER, ShipClass.LANCER, ShipClass.BULWARK, ShipClass.BULWARK,
-                ShipClass.LONGBOW, ShipClass.LONGBOW, ShipClass.HIVE, ShipClass.AEGIS, ShipClass.PHANTOM};
+        for (Unit u : army) if (u.cls == f.race.scout) wisps++;
+        if (wisps < 2) { w.production.enqueue(p, f.race.scout); return; }
+        // upgrade a factory once the economy can carry it
+        if (w.time > 600 && f.energy > 1800 && f.metal > 1800) {
+            ShipClass up = p.tier == 1 ? ShipClass.FACTORY_TIER_2 : p.tier == 2 ? ShipClass.FACTORY_TIER_3 : null;
+            if (up != null && w.production.enqueue(p, up) == null) return;
+        }
+        if (p.tier >= 3 && f.race.botBattleship != null && w.rng.nextBoolean() && w.production.enqueue(p, f.race.botBattleship) == null) return;
+        ShipClass[] pool = f.race.botArmy;
+        if (pool.length == 0) return;
         for (int tries = 0; tries < 4; tries++) {
             ShipClass c = pool[w.rng.nextInt(pool.length)];
             if (w.production.enqueue(p, c) == null) return;
@@ -292,22 +426,23 @@ public class RivalAI {
 
     private void command(Unit ms) {
         float power = armyPower();
-        float threshold = (20 + w.time / 60f * 1.6f) * w.difficulty.assaultThreshold;
-        float rallyA = (float) Math.atan2(World.SIZE / 2 - ms.y, World.SIZE / 2 - ms.x);
+        float threshold = (20 + w.time / 60f * 1.6f) * f.difficulty.assaultThreshold;
+        spacerts.world.StarSystem home = w.systemAt(ms.x, ms.y);
+        float rallyA = (float) Math.atan2(home.cy - ms.y, home.cx - ms.x);
         float rx = ms.x + (float) Math.cos(rallyA) * 350, ry = ms.y + (float) Math.sin(rallyA) * 350;
 
         // defence takes priority when something of ours near home is hit
         boolean homeThreat = w.time - f.lastAttackedTime < 6 && Math.hypot(f.lastAttackX - ms.x, f.lastAttackY - ms.y) < 3500;
         if (homeThreat && mode != Mode.DEFEND && (mode != Mode.ASSAULT || power < 10)) {
             mode = Mode.DEFEND;
-            for (Unit u : army) u.command(Order.ATTACK_MOVE, f.lastAttackX, f.lastAttackY);
+            for (Unit u : army) order(u, Order.ATTACK_MOVE, f.lastAttackX, f.lastAttackY);
             return;
         }
         switch (mode) {
             case DEFEND:
                 if (w.time - f.lastAttackedTime > 15) {
                     mode = Mode.BUILDUP;
-                    for (Unit u : army) u.command(Order.MOVE, rx, ry);
+                    for (Unit u : army) order(u, Order.MOVE, rx, ry);
                 } else {
                     for (Unit u : army) if (u.order == Order.IDLE) u.command(Order.ATTACK_MOVE, f.lastAttackX, f.lastAttackY);
                 }
@@ -327,7 +462,7 @@ public class RivalAI {
             case ASSAULT:
                 if (power < assaultStartPower * 0.35f) {
                     mode = Mode.BUILDUP;
-                    for (Unit u : army) u.command(Order.MOVE, rx, ry);
+                    for (Unit u : army) order(u, Order.MOVE, rx, ry);
                     break;
                 }
                 if (w.time < launchAt) { // warned the player; gathering at the rally point before moving out
@@ -339,7 +474,7 @@ public class RivalAI {
                 if (done) {
                     if (!pickAssault(ms)) {
                         mode = Mode.BUILDUP;
-                        for (Unit u : army) u.command(Order.MOVE, rx, ry);
+                        for (Unit u : army) order(u, Order.MOVE, rx, ry);
                         break;
                     }
                     float delay = warn(army.size());
@@ -369,8 +504,9 @@ public class RivalAI {
         int together = 0;
         for (Unit u : army) if (u.dist(lead) < 900) together++;
         boolean grouped = together >= army.size() * 0.7f || lead.dist(assaultX, assaultY) < 1800;
+        if (grouped) tacticalLaunch(lead); // Hard / Insane: the grouped core marches in as a Bulldozer
         for (Unit u : army) {
-            if (u.target != null) continue; // already fighting
+            if (u.target != null || u.formation != 0) continue; // already fighting, or the formation drives it
             if (grouped) {
                 boolean onTarget = u.order == Order.ATTACK_MOVE && Math.hypot(u.tx - assaultX, u.ty - assaultY) < 400;
                 if (!onTarget) u.command(Order.ATTACK_MOVE, assaultX + w.rng.nextFloat() * 160 - 80, assaultY + w.rng.nextFloat() * 160 - 80);
@@ -387,9 +523,9 @@ public class RivalAI {
         if (assaultUnit == null || !assaultUnit.owner.isPlayer()) return 0;
         Unit t = assaultUnit;
         String where = t.home != null ? t.home.name : t.s.name;
-        w.notify(w.player, f.name + " fleet (" + ships + " ships) is preparing to attack your " + where + "!", World.ALERT);
-        w.alert(t.x, t.y);
-        return w.difficulty.warningDelay;
+        w.notify(t.owner, f.name + " fleet (" + ships + " ships) is preparing to attack your " + where + "!", World.ALERT);
+        if (t.owner == w.player) w.alert(t.x, t.y);
+        return f.difficulty.warningDelay;
     }
 
     /** Picks the next assault target: a guarded planet nearby, or the closest enemy structure. */
@@ -408,21 +544,21 @@ public class RivalAI {
         Unit nearPlayer = null, nearRival = null;
         float dp = Float.MAX_VALUE, dr = Float.MAX_VALUE;
         for (Unit u : w.units) {
-            if (u.dead || u.owner == f || !u.owner.isMajor()) continue;
-            if (!(u.cls.isBuilding() || u.cls == ShipClass.MOTHERSHIP)) continue;
+            if (u.dead || !f.hostileTo(u.owner) || !u.owner.isMajor()) continue;
+            if (!(u.cls.isBuilding() || u.cls.isFlagship())) continue;
             float d = ms.dist(u);
             if (u.owner.isPlayer()) {
                 // Easy: hit the player's colonies and outposts first; their Mothership only when nothing else is left
-                if (u.cls == ShipClass.MOTHERSHIP && w.difficulty == spacerts.world.Difficulty.EASY) d += 100000;
+                if (u.cls.isFlagship() && f.difficulty == spacerts.world.Difficulty.EASY) d += 100000;
                 if (d < dp) { dp = d; nearPlayer = u; }
             } else if (d < dr) { dr = d; nearRival = u; }
         }
         Unit bestEnemy;
         if (nearPlayer != null && nearRival != null)
-            bestEnemy = w.rng.nextFloat() < w.difficulty.playerShare ? nearPlayer : nearRival;
+            bestEnemy = w.rng.nextFloat() < f.difficulty.playerShare ? nearPlayer : nearRival;
         else bestEnemy = nearPlayer != null ? nearPlayer : nearRival;
         // early game: only fight natives for planets; empires are fair game after the difficulty's first strike time
-        float first = w.difficulty.firstStrike;
+        float first = f.difficulty.firstStrike;
         if (w.time < first) bestEnemy = null;
         boolean preferPlanet = bestPlanet != null && (bestEnemy == null || w.time < first + 600 || w.rng.nextFloat() < 0.4f);
         if (preferPlanet) {

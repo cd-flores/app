@@ -1,4 +1,0 @@
-Manifest-Version: 1.0
-Main-Class: spacerts.lwjgl3.DesktopLauncher
-Enable-Native-Access: ALL-UNNAMED
-

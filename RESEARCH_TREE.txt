@@ -17,110 +17,110 @@ Rare items (extracted by Research Outposts; build a Surveyor at the Hub)
   Void    = Void Shard       from Crystal worlds         (1 every 45s)
   Relic   = Relic Fragment   from Ancient Ruins          (1 every 90s; guarded, conquer first)
 
-Cost format: Energy / Metal / Rare items     Time in seconds
+Cost format: Energy / Metal / Rare items (energy includes the +50 surcharge)     Time in seconds
 
 
 HUB  (upgrade the Hub itself)
 -----------------------------
-Hub Expansion II          Tier 1   600E / 600M / 1 Pyro, 1 Cryo, 1 Plasma, 1 Void   60s
+Hub Expansion II          Tier 1   650E / 600M / 1 Pyro, 1 Cryo, 1 Plasma, 1 Void   60s
     -> Research Hub becomes tier 2
-Hub Expansion III         Tier 2   1200E / 1200M / 2 Relic                          90s
+Hub Expansion III         Tier 2   1250E / 1200M / 2 Relic                          90s
     Requires: Hub Expansion II
     -> Research Hub becomes tier 3
 
 
 MILITARY
 --------
-Plasma Weapons I          Tier 1   300E / 300M / 2 Pyro                40s
+Plasma Weapons I          Tier 1   350E / 300M / 2 Pyro                40s
     -> +15% weapon damage (all ships)
-  Plasma Weapons II       Tier 2   600E / 600M / 5 Pyro, 1 Relic       60s
+  Plasma Weapons II       Tier 2   650E / 600M / 5 Pyro, 1 Relic       60s
       Requires: Plasma Weapons I
       -> +15% more weapon damage
 
-Reinforced Hulls I        Tier 1   300E / 400M / 2 Cryo                40s
+Reinforced Hulls I        Tier 1   350E / 400M / 2 Cryo                40s
     -> +15% hull HP (all ships)
-  Reinforced Hulls II     Tier 2   600E / 800M / 5 Cryo, 1 Relic       60s
+  Reinforced Hulls II     Tier 2   650E / 800M / 5 Cryo, 1 Relic       60s
       Requires: Reinforced Hulls I
       -> +15% more hull HP
 
-Last Stand                Tier 1   300E / 250M / 2 Cryo                40s
+Last Stand                Tier 1   350E / 250M / 2 Cryo                40s
     -> Infantry (Lancers and Hive Drones) survive one killing blow with 1 HP.
        Each ship's Last Stand recharges 30 s after it triggers.
 
-Shield Harmonics          Tier 1   400E / 300M / 3 Cryo                45s
+Shield Harmonics          Tier 1   450E / 300M / 3 Cryo                45s
     -> Shields recharge twice as fast
 
-Ion Engines               Tier 1   300E / 200M / 2 Plasma              40s
+Ion Engines               Tier 1   350E / 200M / 2 Plasma              40s
     -> +15% ship speed
 
-Deep Sensors              Tier 1   250E / 150M / 2 Void                35s
+Deep Sensors              Tier 1   300E / 150M / 2 Void                35s
     -> +25% vision; Sensor Ping recharges in 18s instead of 25s
 
-Carrier Doctrine          Tier 1   500E / 500M / none                  50s
+Carrier Doctrine          Tier 1   550E / 500M / none                  50s
     -> Unlocks HIVE (carrier)
 
-Aegis Project             Tier 2   600E / 600M / 4 Cryo                60s
+Aegis Project             Tier 2   650E / 600M / 4 Cryo                60s
     -> Unlocks AEGIS (tank with shield bubble for allies)
 
-Phantom Project           Tier 2   600E / 500M / 4 Plasma, 2 Void      60s
+Phantom Project           Tier 2   650E / 500M / 4 Plasma, 2 Void      60s
     -> Unlocks PHANTOM (cloaked sniper)
 
-Leviathan Project         Tier 3   1500E / 1500M / 6 Void, 3 Relic     120s
+Leviathan Project         Tier 3   1550E / 1500M / 6 Void, 3 Relic     120s
     -> Unlocks LEVIATHAN (massive capital ship)
-  Nova Cannon             Tier 3   800E / 600M / 6 Pyro, 1 Relic       70s
+  Nova Cannon             Tier 3   850E / 600M / 6 Pyro, 1 Relic       70s
       Requires: Leviathan Project
       -> Leviathan ability (Q): huge area blast, 1500 damage, 35s cooldown
-  Capital Fleet Command   Tier 3   2000E / 2000M / 5 Relic             120s
+  Capital Fleet Command   Tier 3   2050E / 2000M / 5 Relic             120s
       Requires: Leviathan Project
       -> Leviathan limit raised from 1 to 3
 
 
 ECONOMY
 -------
-Efficient Collectors I    Tier 1   200E / 150M / none                  30s
+Efficient Collectors I    Tier 1   250E / 150M / none                  30s
     -> +25% harvest rate
-  Efficient Collectors II Tier 2   500E / 400M / 1 Plasma              45s
+  Efficient Collectors II Tier 2   550E / 400M / 1 Plasma              45s
       Requires: Efficient Collectors I
       -> +25% more harvest rate
 
-Expanded Holds            Tier 1   250E / 250M / none                  30s
+Expanded Holds            Tier 1   300E / 250M / none                  30s
     -> +50% harvester cargo
 
-Deep Core Mining          Tier 1   300E / 300M / 1 Void                40s
+Deep Core Mining          Tier 1   350E / 300M / 1 Void                40s
     -> +30% metal mining rate
 
-Survey Drills             Tier 1   300E / 200M / 1 Pyro, 1 Cryo        40s
+Survey Drills             Tier 1   350E / 200M / 1 Pyro, 1 Cryo        40s
     -> Outposts extract rare items 50% faster
 
 
 COLONY
 ------
-Arcology Habitats         Tier 1   400E / 400M / 1 Cryo                45s
+Arcology Habitats         Tier 1   450E / 400M / 1 Cryo                45s
     -> +50% housing on all colonies
 
-Planetary Defense Grid    Tier 2   500E / 600M / 2 Pyro                50s
+Planetary Defense Grid    Tier 2   550E / 600M / 2 Pyro                50s
     -> Every colony gets 2 defense turrets (including future colonies)
        (stacks with the Turret / Shield Upgrades built by Harvesters: 5 points per colony, +2 turrets or +400 shield each)
 
 
 MOTHERSHIP
 ----------
-Mothership Plating        Tier 1   500E / 700M / 2 Cryo                45s
+Mothership Plating        Tier 1   550E / 700M / 2 Cryo                45s
     -> +40% Mothership HP
 
-Self-Repair Nanites       Tier 1   400E / 400M / 1 Void                45s
+Self-Repair Nanites       Tier 1   450E / 400M / 1 Void                45s
     -> Mothership repairs 12 HP/s; structures repair 4 HP/s
 
-Rapid Assembly            Tier 2   500E / 500M / 2 Plasma              45s
+Rapid Assembly            Tier 2   550E / 500M / 2 Plasma              45s
     -> +30% build speed everywhere
 
 
 SHIPS UNLOCKED BY RESEARCH (built at a Ship Factory)
 -------------------------------------------------------------------------------
-Hive        needs Carrier Doctrine     300E / 350M                          6 housing
-Aegis       needs Aegis Project        250E / 350M / 3 Cryo                 6 housing
-Phantom     needs Phantom Project      250E / 200M / 2 Plasma, 1 Void       4 housing
-Leviathan   needs Leviathan Project    2000E / 2500M / 3 Pyro, 5 Void, 3 Relic   20 housing
+Hive        needs Carrier Doctrine     350E / 350M                          6 housing
+Aegis       needs Aegis Project        300E / 350M / 3 Cryo                 6 housing
+Phantom     needs Phantom Project      300E / 200M / 2 Plasma, 1 Void       4 housing
+Leviathan   needs Leviathan Project    2050E / 2500M / 3 Pyro, 5 Void, 3 Relic   20 housing
 
 
 SUGGESTED PATH TO THE LEVIATHAN
@@ -132,3 +132,45 @@ SUGGESTED PATH TO THE LEVIATHAN
 5. Leviathan Project (6 Void, 3 Relic)
 6. Build the Leviathan (3 Pyro, 5 Void, 3 Relic + 20 housing)
 7. Optional: Nova Cannon, then Capital Fleet Command
+
+
+SCARCE FINDS AND LATE TECHS
+---------------------------
+Scarce finds turn up at low odds (they appear in the top bar once you have found one):
+  Dark     = Dark Matter      harvesters unloading asteroid metal (2%/load), Asteroid Miners (4%/min)
+  Star     = Star Essence     Solar Collectors (4%/min), harvesters unloading starlight (1%/load)
+  Neut     = Neutronium       salvaging a wreck to the end (8%); pirate stronghold wrecks always hold 2
+  Exotic   = Exotic Matter    Ruins outposts (12% per relic), destroyed pirate Dreadnoughts (25%)
+
+Neutronium Plating        Tier 3   1550E / 2000M / 4 Neut              100s
+    Requires: Reinforced Hulls II
+    -> +20% more hull HP (all ships)
+Hyperdrive Lattice        Tier 3   1250E / 1000M / 2 Dark, 2 Star, 1 Exotic   90s
+    Requires: Ion Engines
+    -> +10% ship speed; jump gates recharge instantly
+Dark Matter Reactors      Tier 3   1550E / 1500M / 4 Dark              100s
+    Requires: Rapid Assembly
+    -> Another +30% build speed everywhere
+
+Lab upgrades: each Research Hub tier (Hub Expansion II / III) also researches 25% faster.
+
+
+DEFENSE AND LOGISTICS (added later)
+-----------------------------------
+Splinter Hulls            Tier 1   350E / 250M / 1 Plasma              40s
+    -> Patrol Ships split into 3 Patrol Skiffs instead of 2 when destroyed
+Emergency Thrusters       Tier 1   350E / 300M / 2 Plasma              40s
+    -> Auto-retreating ships move 60% faster
+Salvage Drones            Tier 1   350E / 200M / none                  40s
+    -> Wrecks are salvaged 50% faster and give +25% metal
+Sniper Deflectors         Tier 1   450E / 400M / 2 Cryo                45s
+    -> Your colonies and their planet turrets take 35% less damage from snipers
+Jump Inhibitors           Tier 2   650E / 500M / 3 Void                60s
+    -> Enemy ships coming out of a jump gate into a hex you own are slowed 50% for 8 s (Hive)
+Counter-Battery Turrets   Tier 2   650E / 700M / 2 Pyro, 1 Void        60s
+    -> Planet turrets and Defense Platforms reach snipers out to 1100 - but only while the
+       sniper is visible, i.e. after it has given itself away by firing
+Martyr Shockwave          Tier 2   750E / 600M / 1 Pyro, 1 Cryo, 1 Plasma, 1 Void   60s
+    -> When one of your colonies is destroyed, every enemy ship within 1200 is stunned for 8 s
+Rapid Refit Docks         Tier 2   650E / 600M / 1 Cryo, 1 Plasma      50s
+    -> Base repair 2% -> 4% hull per second, starting 3 s after combat (was 6 s)

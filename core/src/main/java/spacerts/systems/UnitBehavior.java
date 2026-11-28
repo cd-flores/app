@@ -18,6 +18,10 @@ public class UnitBehavior {
     private final World w;
     private final List<Unit> tmp = new ArrayList<>();
     private static final Color HEAL = new Color(0.4f, 1f, 0.5f, 1f);
+    /** Base repair: ships near their own colony, factory or mothership, out of combat, regain 2% max HP per second. */
+    public static final float REPAIR_RANGE = 400f, REPAIR_DELAY = 6f, REPAIR_RATE = 0.02f;
+    /** Seconds between healer repair pulses. */
+    private static final float HEAL_PULSE = 0.25f;
 
     public UnitBehavior(World w) {
         this.w = w;
@@ -29,11 +33,29 @@ public class UnitBehavior {
         // regeneration & timers
         if (u.shield < u.maxShield() && w.time - u.lastHit > 4f)
             u.shield = Math.min(u.maxShield(), u.shield + u.shieldRegen() * u.owner.shieldRegenMult() * dt);
-        if (u.owner.has(Tech.MS_REPAIR) && (u.cls == ShipClass.MOTHERSHIP || u.cls.isBuilding()) && u.hp < u.maxHp())
-            u.hp = Math.min(u.maxHp(), u.hp + (u.cls == ShipClass.MOTHERSHIP ? 12f : 4f) * dt);
+        if (u.owner.has(Tech.MS_REPAIR) && (u.cls.isFlagship() || u.cls.isBuilding()) && u.hp < u.maxHp())
+            w.repair(u, (u.cls.isFlagship() ? 12f : 4f) * Unit.DURABILITY * dt); // paid in metal
+        boolean refit = u.owner.has(Tech.RAPID_REFIT); // Rapid Refit Docks: 4%/s, starting 3 s after combat
+        if (!u.s.stationary && u.hp < u.maxHp() && w.time - u.lastHit > (refit ? REPAIR_DELAY / 2 : REPAIR_DELAY)
+                && w.nearestRepairPoint(u.owner, u.x, u.y, REPAIR_RANGE, false) != null)
+            w.repair(u, u.maxHp() * REPAIR_RATE * (refit ? 2 : 1) * dt); // docked at a station or the mothership (paid in metal); colonies no longer repair ships
         if (u.cooldown > 0) u.cooldown -= dt;
-        if (u.abilityCd > 0) u.abilityCd -= dt;
+        for (int i = 0; i < u.abilityCds.length; i++) if (u.abilityCds[i] > 0) u.abilityCds[i] -= dt;
+        if (u.ghostTimer > 0) u.ghostTimer -= dt;
+        if (u.sprintTimer > 0) u.sprintTimer -= dt;
+        if (u.burnTime > 0) { // Pyre fire: armor doesn't help
+            u.burnTime -= dt;
+            w.combat.applyDamage(u, u.burnDps * dt, true, null);
+            if (u.burnTime <= 0) u.burnDps = 0;
+            if (u.dead) return;
+        }
+        if (u.slowMultTimer > 0 && (u.slowMultTimer -= dt) <= 0) u.slowMult = 1f; // Crippling Line wears off
+        if (u.martyrTarget != null) { // Martyr Charge: nothing else matters now
+            w.tactics.martyrUpdate(u, dt);
+            return;
+        }
         if (u.tauntTimer > 0) u.tauntTimer -= dt;
+        if (u.overchargeTimer > 0) u.overchargeTimer -= dt;
         if (u.forcedTimer > 0) {
             u.forcedTimer -= dt;
             if (u.forcedTarget != null && !u.forcedTarget.dead && u.armed()) u.target = u.forcedTarget;
@@ -47,8 +69,11 @@ public class UnitBehavior {
         if (u.order == Order.COLONIZE && u.s.colonizer) { colonize(u); return; }
         if (u.order == Order.SURVEY && u.s.surveyor) { survey(u); return; }
         if (u.owner.kind == Faction.Kind.NATIVES) { natives(u, dt); return; }
-        if (u.s.healRate > 0) { mender(u, dt); return; }
-        if (!u.owner.isPlayer() && u.s.ability != Ability.NONE) autoAbility(u);
+        if (u.s.healRate > 0) heal(u, dt); // Repair Stations and Halcyon cruisers
+        if (u.s.stationary && !u.armed()) return; // unarmed structures just sit there
+        if (u.rallied) { rallied(u); return; } // Rally Stations: hold the formation slot
+        if (u.cls == ShipClass.DEFENDER && u.owner.mothership != null && !u.owner.mothership.dead) { defender(u, dt); return; }
+        if (!u.owner.isPlayer() && u.s.abilities.length > 0) autoAbility(u);
         orders(u, dt);
     }
 
@@ -82,6 +107,11 @@ public class UnitBehavior {
                 break;
             default: // IDLE (and stray orders)
                 if (armed) autoAcquire(u, dt, u.s.stationary ? u.range() : u.range() + 250);
+                if (armed && u.target == null && counterBattery(u) && u.acquireTimer > 0.3f) u.target = revealedSniper(u);
+                if (u.target == null && isPatroller(u)) { // Patrol Ships and skiffs fly their circuit when idle
+                    patrolNext(u);
+                    break;
+                }
                 if (u.target != null && !u.s.stationary
                         && Math.hypot(u.target.x - u.anchorX, u.target.y - u.anchorY) > 900 + u.range()) {
                     u.target = null;
@@ -94,12 +124,39 @@ public class UnitBehavior {
 
     private boolean inRange(Unit u, Unit t) {
         float d = u.dist(t) - t.radius;
-        return d <= u.range() && d >= u.s.minRange;
+        return d <= rangeVs(u, t) && d >= u.s.minRange;
+    }
+
+    /** Counter-Battery Turrets: planet turrets and Defense Platforms reach revealed snipers out to 1100. */
+    public static final float COUNTER_BATTERY_RANGE = 1100f;
+
+    private static boolean counterBattery(Unit u) {
+        return (u.cls == ShipClass.TURRET || u.cls == ShipClass.PLATFORM) && u.owner.has(Tech.COUNTER_BATTERY);
+    }
+
+    /** Weapon range against a particular target (longer for counter-battery guns firing at snipers). */
+    private float rangeVs(Unit u, Unit t) {
+        if (t.s.type == spacerts.units.ArmorType.ARTILLERY && counterBattery(u)) return Math.max(u.range(), COUNTER_BATTERY_RANGE);
+        return u.range();
+    }
+
+    /** A sniper within counter-battery range that the turret's side can currently see (it has just fired), or null. */
+    private Unit revealedSniper(Unit u) {
+        w.hash.query(u.x, u.y, COUNTER_BATTERY_RANGE + 80, tmp);
+        Unit best = null;
+        float bd = Float.MAX_VALUE;
+        for (Unit c : tmp) {
+            if (c.dead || !u.owner.hostileTo(c.owner) || c.s.type != spacerts.units.ArmorType.ARTILLERY) continue;
+            if (c.owner.kind == Faction.Kind.NATIVES || !w.canSee(u.owner, c)) continue;
+            float d = u.dist(c) - c.radius;
+            if (d <= COUNTER_BATTERY_RANGE && d < bd) { bd = d; best = c; }
+        }
+        return best;
     }
 
     private void engage(Unit u, Unit t) {
         float d = u.dist(t) - t.radius;
-        if (d > u.range()) {
+        if (d > rangeVs(u, t)) {
             if (!u.s.stationary) goal(u, t.x, t.y, u.range() * 0.85f + t.radius);
         } else if (d < u.s.minRange) {
             if (!u.s.stationary) {
@@ -107,9 +164,40 @@ public class UnitBehavior {
                 float len = Math.max(1f, (float) Math.hypot(dx, dy));
                 goal(u, u.x + dx / len * 250, u.y + dy / len * 250, 0);
             }
-        } else if (u.cooldown <= 0) {
+        } else if (u.cooldown <= 0 && u.armed()) { // Ghost Drive scouts hold their fire
             w.combat.fire(u, t);
         }
+    }
+
+    // ------------------------------------------------------------------ patrols
+
+    private static boolean isPatroller(Unit u) {
+        return (u.cls == ShipClass.PATROL || u.cls == ShipClass.PATROL_SKIFF) && u.owner.isMajor();
+    }
+
+    /**
+     * Next stop on the patrol circuit: the owner's colonies in nearest-next order starting from the Mothership,
+     * then back to the Mothership, round and round. Attack-moves, so it fights whatever it meets.
+     */
+    private void patrolNext(Unit u) {
+        Unit ms = u.owner.mothership;
+        List<Unit> route = new ArrayList<>();
+        List<Unit> left = new ArrayList<>(u.owner.colonies);
+        float cx = ms != null && !ms.dead ? ms.x : u.x, cy = ms != null && !ms.dead ? ms.y : u.y;
+        while (!left.isEmpty()) { // nearest-next tour
+            Unit best = left.get(0);
+            for (Unit c : left) if (c.dist(cx, cy) < best.dist(cx, cy)) best = c;
+            route.add(best);
+            left.remove(best);
+            cx = best.x;
+            cy = best.y;
+        }
+        if (ms != null && !ms.dead) route.add(ms);
+        if (route.isEmpty()) return;
+        Unit stop = route.get(u.patrolStop % route.size());
+        u.patrolStop = (u.patrolStop + 1) % route.size();
+        float a = (u.id * 2.39996f) % 6.2832f, r = stop.radius + 120;
+        u.command(Order.ATTACK_MOVE, stop.x + (float) Math.cos(a) * r, stop.y + (float) Math.sin(a) * r);
     }
 
     private void autoAcquire(Unit u, float dt, float r) {
@@ -132,12 +220,28 @@ public class UnitBehavior {
         float bestScore = Float.MAX_VALUE;
         boolean focus = focusFire(u);
         for (Unit c : tmp) {
-            if (c.dead || c.owner == u.owner) continue;
+            if (c.dead || !u.owner.hostileTo(c.owner)) continue;
             float d = u.dist(c) - c.radius;
             if (d > r) continue;
             if (centre != null && Math.hypot(c.x - centre.x, c.y - centre.y) > cr) continue;
+            if (centre != null && !centre.provokedBy(c.owner, w.time)) continue; // fortified worlds let fleets pass until attacked
             if (!w.canSee(u.owner, c)) continue;
             float score = d;
+            if (u.targeting != spacerts.units.Targeting.NEAREST && centre == null) { // targeting modes (like tower targeting)
+                switch (u.targeting) {
+                    case FARTHEST: score = -d; break;
+                    case MOST_HEALTH: score = -c.hp; break;
+                    case LEAST_HEALTH: score = c.hp; break;
+                    default: score = w.rng.nextFloat() * 1000f; break; // RANDOM (deterministic: the world's random stream)
+                }
+                if (c.tauntTimer > 0) score -= 1e7f; // Taunt still wins
+                if (d < u.s.minRange) score += 1e7f;
+                if (score < bestScore) {
+                    bestScore = score;
+                    best = c;
+                }
+                continue;
+            }
             if (focus && d <= u.range()) {
                 // finish off what allies are already shooting, and wounded targets
                 score -= Math.min(c.targetedBy, 5) * 45f;
@@ -156,12 +260,12 @@ public class UnitBehavior {
         return best;
     }
 
-    /** Smarter targeting: the player's units (with automation on), all empire turrets, and rivals on Hard. */
+    /** Smarter targeting: human units (with automation on), all empire turrets, and bots on Hard or Insane. */
     private boolean focusFire(Unit u) {
         Faction f = u.owner;
         if (f.isPlayer()) return f.autoDefense;
         if (u.cls == ShipClass.TURRET && f.isMajor()) return true;
-        return f.kind == Faction.Kind.RIVAL && w.difficulty == spacerts.world.Difficulty.HARD;
+        return f.kind == Faction.Kind.RIVAL && f.difficulty.ordinal() >= spacerts.world.Difficulty.HARD.ordinal();
     }
 
     private void goal(Unit u, float x, float y, float stop) {
@@ -173,55 +277,193 @@ public class UnitBehavior {
 
     // ------------------------------------------------------------------ abilities
 
-    /** Returns a failure reason or null on success. */
-    public String useAbility(Unit u) {
-        if (u.s.ability == Ability.NONE) return "No ability";
-        if (u.abilityCd > 0) return u.s.ability.title + " recharging (" + (int) Math.ceil(u.abilityCd) + "s)";
-        switch (u.s.ability) {
+    /** Ghost Drive: seconds cloaked, speed multiplier, cooldown. */
+    public static final float GHOST_TIME = 6f, GHOST_SPEED = 1.6f, GHOST_CD = 30f;
+    /** Evasive Dash: distance, duration of the slide, cooldown. */
+    public static final float DASH_DIST = 400f, DASH_TIME = 0.35f, DASH_CD = 15f;
+    /** Warp Jump (Mothership tier II): reach, scout-speed sprint after the jump, cooldown (20 minutes). */
+    public static final float WARP_REACH = 1000f, WARP_SPRINT = 20f, WARP_CD = 20 * 60f;
+
+    /** Uses ability a of unit u. Returns a failure reason or null on success. */
+    public String useAbility(Unit u, Ability a) {
+        return useAbility(u, a, u.x, u.y);
+    }
+
+    /** Uses ability a of unit u aimed at (x, y) (only Warp Jump uses the point). Returns a failure reason or null. */
+    public String useAbility(Unit u, Ability a, float x, float y) {
+        if (a == null || a == Ability.NONE || !u.s.has(a)) return "No ability";
+        float cd = u.abilityCds[a.ordinal()];
+        if (cd > 0) return a.title + " recharging (" + (int) Math.ceil(cd) + "s)";
+        switch (a) {
             case PING:
                 w.pings.add(new spacerts.world.Ping(u.owner, u.x, u.y, 1600, 8));
                 w.ring(u.x, u.y, 1600, u.owner.color, 1.2f);
-                u.abilityCd = u.owner.has(Tech.SENSORS) ? 18 : 25;
+                cd = u.owner.has(Tech.SENSORS) ? 18 : 25;
                 if (u.owner.vision != null) u.owner.vision.reveal(u.x, u.y, 1600);
-                return null;
+                break;
+            case GHOST:
+                u.ghostTimer = GHOST_TIME;
+                u.target = null; // it can't fire while ghosting
+                cd = GHOST_CD;
+                w.ring(u.x, u.y, u.radius * 4f, new Color(0.6f, 0.8f, 1f, 1f), 0.4f);
+                break;
+            case DASH: {
+                // away from the closest threat (its target, else the nearest visible enemy), else straight backward
+                Unit from = u.target != null && !u.target.dead ? u.target : acquire(u, 900, null, 0);
+                float dx, dy;
+                if (from != null) {
+                    dx = u.x - from.x;
+                    dy = u.y - from.y;
+                } else {
+                    dx = -(float) Math.cos(u.angle);
+                    dy = -(float) Math.sin(u.angle);
+                }
+                float len = Math.max(0.001f, (float) Math.hypot(dx, dy));
+                u.dashVx = dx / len * DASH_DIST / DASH_TIME;
+                u.dashVy = dy / len * DASH_DIST / DASH_TIME;
+                u.dashTimer = DASH_TIME;
+                // land there and stay: idle ships hold the new spot instead of walking back
+                u.anchorX = w.clampX(u.x + dx / len * DASH_DIST, u.y + dy / len * DASH_DIST);
+                u.anchorY = w.clampY(u.x + dx / len * DASH_DIST, u.y + dy / len * DASH_DIST);
+                if (u.order == Order.MOVE) u.idle();
+                cd = DASH_CD;
+                w.ring(u.x, u.y, u.radius * 2.5f, new Color(0.9f, 0.9f, 1f, 1f), 0.3f);
+                break;
+            }
             case TAUNT:
-                w.hash.query(u.x, u.y, 560, tmp);
+                float tr = u.formation != 0 && u.owner.has(spacerts.units.TacticUpgrade.SHIELD_WALL)
+                        && w.tactics.tacticOf(u) == spacerts.units.Tactic.BULLDOZER ? TacticsSystem.SHIELD_WALL_TAUNT : 500f; // Shield Wall
+                w.hash.query(u.x, u.y, tr + 60f, tmp);
                 for (Unit e : tmp)
-                    if (!e.dead && e.owner != u.owner && e.armed() && e.dist(u) < 500) {
+                    if (!e.dead && u.owner.hostileTo(e.owner) && e.armed() && e.dist(u) < tr) {
                         e.forcedTarget = u;
                         e.forcedTimer = 5f;
                     }
                 u.tauntTimer = 5f;
-                u.abilityCd = 20;
-                w.ring(u.x, u.y, 500, new Color(1f, 0.85f, 0.3f, 1f), 0.6f);
-                return null;
-            case NOVA:
+                cd = 20;
+                w.ring(u.x, u.y, tr, new Color(1f, 0.85f, 0.3f, 1f), 0.6f);
+                break;
+            case WARP: {
+                if (u.tier < 2) return "Warp Jump needs Mothership tier II";
+                float dx = x - u.x, dy = y - u.y, d = (float) Math.hypot(dx, dy);
+                if (d < 1f) return "Pick a spot to jump to";
+                float k = Math.min(1f, WARP_REACH / d);
+                float nx = w.clampX(u.x + dx * k, u.y + dy * k), ny = w.clampY(u.x + dx * k, u.y + dy * k);
+                Color wc = new Color(0.6f, 0.85f, 1f, 1f);
+                w.ring(u.x, u.y, u.radius * 3f, wc, 0.6f);
+                w.beam(u.x, u.y, nx, ny, wc, 6f, 0.4f);
+                u.x = nx;
+                u.y = ny;
+                u.vx = u.vy = 0;
+                u.anchorX = nx;
+                u.anchorY = ny;
+                u.idle();
+                u.sprintTimer = WARP_SPRINT;
+                w.ring(nx, ny, u.radius * 3f, wc, 0.8f);
+                cd = WARP_CD;
+                break;
+            }
+            case NOVA: {
                 if (!u.owner.has(Tech.NOVA_CANNON)) return "Requires Nova Cannon research";
                 Unit t = u.target != null ? u.target : acquire(u, 950, null, 0);
                 if (t == null) return "No target in range";
                 w.combat.nova(u, t.x, t.y);
-                u.abilityCd = 35;
-                return null;
+                cd = 35;
+                break;
+            }
+            case OVERCHARGE:
+                u.overchargeTimer = 6f;
+                cd = 30;
+                w.ring(u.x, u.y, u.radius * 2.5f, new Color(1f, 0.6f, 0.2f, 1f), 0.6f);
+                break;
             default:
                 return "No ability";
         }
+        u.abilityCds[a.ordinal()] = u.owner.noCooldowns ? 0 : cd; // ThereIsNoSpoon cheat
+        return null;
     }
 
+    /** Bots (and pirates) fire their skills on their own. */
     private void autoAbility(Unit u) {
-        if (u.abilityCd > 0) return;
-        switch (u.s.ability) {
-            case PING:
-                if (u.target != null || w.time - u.lastHit < 2) useAbility(u);
-                break;
-            case TAUNT:
-                if (u.target != null && u.shield < u.maxShield() * 0.6f) useAbility(u);
-                break;
-            case NOVA:
-                if (u.target != null) useAbility(u);
-                break;
-            default:
-                break;
+        for (Ability a : u.s.abilities) {
+            if (u.abilityCds[a.ordinal()] > 0) continue;
+            switch (a) {
+                case PING:
+                    if (u.target != null || w.time - u.lastHit < 2) useAbility(u, a);
+                    break;
+                case GHOST: // slip away when shot at
+                    if (w.time - u.lastHit < 1 && u.hp < u.maxHp() * 0.6f) useAbility(u, a);
+                    break;
+                case DASH: { // jump clear when something gets inside the minimum range
+                    Unit t = u.target;
+                    if (t != null && !t.dead && u.dist(t) - t.radius < u.s.minRange) useAbility(u, a);
+                    else if (w.time - u.lastHit < 1 && u.hp < u.maxHp() * 0.4f) useAbility(u, a);
+                    break;
+                }
+                case TAUNT:
+                    if (u.target != null && u.shield < u.maxShield() * 0.6f) useAbility(u, a);
+                    break;
+                case NOVA:
+                case OVERCHARGE:
+                    if (u.target != null) useAbility(u, a);
+                    break;
+                default:
+                    break;
+            }
         }
+    }
+
+    // ------------------------------------------------------------------ rally stations & defenders
+
+    /** A rallied station flies to its hex-ring slot around the Mothership; player move orders wait until Rally is off. */
+    private void rallied(Unit u) {
+        if (u.order != Order.IDLE) u.idle();
+        u.anchorX = u.slotX;
+        u.anchorY = u.slotY;
+        goal(u, u.slotX, u.slotY, 4);
+    }
+
+    /** Defenders circle this far outside the Mothership's hull (or outside the rallied stations' rings). */
+    public static final float DEFENDER_ORBIT = 300f, DEFENDER_ORBIT_SPIN = 0.05f, DEFENDER_LEASH = 1000f;
+
+    /** Orbit radius of f's Defenders around their Mothership. */
+    public float defenderOrbit(Faction f) {
+        Unit ms = f.mothership;
+        float r = (ms != null ? ms.radius : 60f) + DEFENDER_ORBIT;
+        return Math.max(r, w.rally.formationRadius(f) + 120f);
+    }
+
+    /**
+     * Defender: orbits the Mothership, evenly spaced with the faction's other Defenders, and shoots anything
+     * that comes within reach without leaving its orbit. Targets are kept within DEFENDER_LEASH of the Mothership.
+     */
+    private void defender(Unit u, float dt) {
+        Unit ms = u.owner.mothership;
+        int idx = 0, n = 0;
+        for (int i = 0, c = w.units.size(); i < c; i++) {
+            Unit o = w.units.get(i);
+            if (o.dead || o.owner != u.owner || o.cls != ShipClass.DEFENDER) continue;
+            if (o.id < u.id) idx++;
+            n++;
+        }
+        float a = (float) (Math.PI * 2 * idx / Math.max(1, n)) + w.time * DEFENDER_ORBIT_SPIN;
+        float r = defenderOrbit(u.owner);
+        float ox = ms.x + (float) Math.cos(a) * r, oy = ms.y + (float) Math.sin(a) * r;
+        u.anchorX = ox;
+        u.anchorY = oy;
+        if (u.order == Order.ATTACK && u.target != null && u.target.dist(ms) < DEFENDER_LEASH) {
+            u.forcedTarget = u.target; // the player picked its target: keep shooting it while orbiting
+            u.forcedTimer = 30f;
+        }
+        if (u.order != Order.IDLE) { u.order = Order.IDLE; u.body = null; }
+        if (u.target != null && u.target.dist(ms) > DEFENDER_LEASH + u.range()) {
+            if (u.forcedTarget == u.target) u.forcedTarget = null;
+            u.target = null;
+        }
+        autoAcquire(u, dt, u.range());
+        if (!u.owner.isPlayer()) autoAbility(u);
+        if (u.target != null && inRange(u, u.target) && u.cooldown <= 0) w.combat.fire(u, u.target);
+        goal(u, ox, oy, 4);
     }
 
     // ------------------------------------------------------------------ special roles
@@ -312,26 +554,19 @@ public class UnitBehavior {
         }
     }
 
-    /** Mobile repair station: repairs every damaged ally (ships and structures) inside its zone at once. */
-    private void mender(Unit u, float dt) {
+    /** Repair Station / Halcyon: repairs every damaged ally (ships and structures) inside its zone at once. */
+    private void heal(Unit u, float dt) {
+        u.healTimer += dt;
+        if (u.healTimer < HEAL_PULSE) return;
+        dt = u.healTimer; // repair the whole interval at once
+        u.healTimer = 0;
         float r = u.s.healRange;
         w.hash.query(u.x, u.y, r + 120, tmp);
         for (Unit c : tmp) {
             if (c.dead || c.owner != u.owner || c == u || c.cls == ShipClass.DRONE) continue;
             if (c.dist(u) - c.radius > r || c.hp >= c.maxHp()) continue;
-            c.hp = Math.min(c.maxHp(), c.hp + u.s.healRate * dt);
-            if (w.rng.nextFloat() < dt * 1.5f) w.beam(u.x, u.y, c.x, c.y, HEAL, 1.5f, 0.25f);
-        }
-        switch (u.order) {
-            case MOVE:
-            case ATTACK_MOVE:
-            case ATTACK:
-                goal(u, u.tx, u.ty, 6);
-                if (u.dist(u.tx, u.ty) < u.radius + 15) u.idle();
-                break;
-            default: // parked: stay where it was put
-                if (u.dist(u.anchorX, u.anchorY) > 30) goal(u, u.anchorX, u.anchorY, 8);
-                break;
+            w.repair(c, u.s.healRate * Unit.DURABILITY * dt); // paid in metal by the ship's owner
+            if (w.rng.nextFloat() < dt * 1.5f) w.beam(u.x, u.y, c.x, c.y, HEAL, 1.5f, 0.35f);
         }
     }
 }

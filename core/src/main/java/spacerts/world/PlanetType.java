@@ -4,8 +4,8 @@ import com.badlogic.gdx.graphics.Color;
 import spacerts.research.RareItem;
 
 public enum PlanetType {
-    HABITABLE("Habitable World", true, false, null, 10, new Color(0.3f, 0.72f, 0.45f, 1f)),
-    DEFENDED("Fortified World", true, false, null, 25, new Color(0.3f, 0.55f, 0.85f, 1f)),
+    HABITABLE("Habitable World", true, false, null, 30, new Color(0.3f, 0.72f, 0.45f, 1f)),
+    DEFENDED("Fortified World", true, false, null, 65,new Color(0.3f, 0.55f, 0.85f, 1f)),
     VOLCANIC("Volcanic Planet", false, true, RareItem.PYROCRYSTAL, 0, new Color(0.72f, 0.28f, 0.14f, 1f)),
     ICE("Ice Planet", false, true, RareItem.CRYO_CORE, 0, new Color(0.75f, 0.88f, 0.95f, 1f)),
     GAS("Gas Giant", false, true, RareItem.PLASMA_ESSENCE, 0, new Color(0.78f, 0.58f, 0.82f, 1f)),
